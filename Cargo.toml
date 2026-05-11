@@ -1,0 +1,67 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/atlas-appearances",
+    "crates/atlas-otb",
+    "crates/atlas-sprites",
+    "crates/atlas-core",
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+authors = ["Atlas Kit Contributors"]
+repository = "https://github.com/atlas-kit/atlas-assets-editor"
+homepage = "https://github.com/atlas-kit/atlas-assets-editor"
+
+[workspace.dependencies]
+# Internal crates
+atlas-appearances = { path = "crates/atlas-appearances" }
+atlas-otb = { path = "crates/atlas-otb" }
+atlas-sprites = { path = "crates/atlas-sprites" }
+atlas-core = { path = "crates/atlas-core" }
+
+# Protobuf
+prost = "0.13"
+prost-types = "0.13"
+prost-build = "0.13"
+protoc-bin-vendored = "3"
+
+# Compression
+lzma-rs = "0.3"
+xz2 = "0.1"
+
+# Image manipulation
+image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
+
+# Concurrency
+dashmap = "6"
+rayon = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Tauri
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
