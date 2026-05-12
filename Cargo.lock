@@ -212,6 +212,7 @@ dependencies = [
  "prost-types",
  "protoc-bin-vendored",
  "serde",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
