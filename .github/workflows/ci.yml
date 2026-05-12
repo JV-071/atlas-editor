@@ -40,6 +40,17 @@ jobs:
         with:
           shared-key: rust-${{ matrix.os }}
 
+      # Tauri's `generate_context!()` macro validates that `frontendDist`
+      # exists at compile time, which would otherwise fail in a clean
+      # checkout (the directory is produced by `vite build`, not committed).
+      # The Frontend job covers the real bundle; here we only need the path
+      # to satisfy the macro for clippy/build/test.
+      - name: Stub frontend dist for Tauri macro
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          printf '<!doctype html><html><body></body></html>' > frontend/dist/index.html
+
       - name: Check formatting
         if: matrix.os == 'ubuntu-latest'
         run: cargo fmt --all -- --check
