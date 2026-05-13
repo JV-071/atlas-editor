@@ -21,6 +21,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::proto;
 
+/// Decode a name/description blob as written by the Tibia client. Real
+/// files mix ASCII with Latin-1 (CP-1252) bytes, so a strict UTF-8 parse
+/// would reject most non-English entries. Strategy: try UTF-8 first (the
+/// common case for ASCII), and on failure fall back to Latin-1 — every
+/// byte 0x00..=0xFF maps to the same Unicode code point, so the fallback
+/// always succeeds without producing replacement characters.
+fn decode_client_string(bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(e) => e.into_bytes().into_iter().map(char::from).collect(),
+    }
+}
+
 /// Top-level neutral representation of an `appearances.dat` file.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Appearances {
@@ -279,8 +292,8 @@ fn appearance_from_proto(a: proto::Appearance, category: AppearanceCategory) -> 
     AppearanceInfo {
         id: AssetId(a.id.unwrap_or(0)),
         category,
-        name: a.name,
-        description: a.description,
+        name: a.name.map(decode_client_string),
+        description: a.description.map(decode_client_string),
         flags: a.flags.map(AppearanceFlags::from_proto).unwrap_or_default(),
         sprite_ids,
     }
@@ -376,12 +389,14 @@ impl AppearanceFlags {
                 .npcsaledata
                 .into_iter()
                 .map(|n| NpcSaleInfo {
-                    name: n.name,
-                    location: n.location,
+                    name: n.name.map(decode_client_string),
+                    location: n.location.map(decode_client_string),
                     sale_price: n.sale_price,
                     buy_price: n.buy_price,
                     currency_object_type_id: n.currency_object_type_id,
-                    currency_quest_flag_display_name: n.currency_quest_flag_display_name,
+                    currency_quest_flag_display_name: n
+                        .currency_quest_flag_display_name
+                        .map(decode_client_string),
                 })
                 .collect(),
             changed_to_expire: p.changedtoexpire.map(|c| ChangedToExpireInfo {

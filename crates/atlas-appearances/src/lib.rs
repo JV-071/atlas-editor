@@ -74,7 +74,7 @@ mod tests {
                 }]
             },
             flags: None,
-            name: name.map(str::to_string),
+            name: name.map(|s| s.as_bytes().to_vec()),
             description: None,
         }
     }
@@ -127,8 +127,8 @@ mod tests {
                 ammo: Some(false),
                 ..Default::default()
             }),
-            name: Some("sword of valor".to_string()),
-            description: Some("Glints in the morning light.".to_string()),
+            name: Some(b"sword of valor".to_vec()),
+            description: Some(b"Glints in the morning light.".to_vec()),
         }
     }
 

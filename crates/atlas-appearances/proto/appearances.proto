@@ -141,8 +141,13 @@ message Appearance {
 	optional uint32 id = 1;
 	repeated FrameGroup frame_group = 2;
 	optional AppearanceFlags flags = 3;
-	optional string name = 4;
-	optional string description = 5;
+	// The Tibia client historically wrote names/descriptions in Latin-1
+	// (CP-1252), not UTF-8. Declare them as bytes and decode lossily in
+	// the Rust model so files with high-bit characters (e.g. "Pó" or
+	// "ç") still parse instead of being rejected by prost's strict UTF-8
+	// check.
+	optional bytes name = 4;
+	optional bytes description = 5;
 }
 
 message AppearanceFlags {
@@ -253,12 +258,13 @@ message AppearanceFlagMarket {
 }
 
 message AppearanceFlagNPC {
-	optional string name = 1;
-	optional string location = 2;
+	// See `Appearance.name` — same Latin-1 caveat applies to NPC strings.
+	optional bytes name = 1;
+	optional bytes location = 2;
 	optional uint32 sale_price = 3;
 	optional uint32 buy_price = 4;
 	optional uint32 currency_object_type_id = 5;
-	optional string currency_quest_flag_display_name = 6;
+	optional bytes currency_quest_flag_display_name = 6;
 }
 
 message AppearanceFlagAutomap {
