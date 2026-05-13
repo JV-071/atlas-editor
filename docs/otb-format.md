@@ -21,19 +21,26 @@ extensions are forward-compatible with any TFS-derived server.
 
 ## Root version
 
-Root attribute `0x01` (ROOT_ATTR_VERSION) carries the classic 4-byte
-version triple. Atlas writes:
+Root attribute `0x01` (ROOT_ATTR_VERSION) preserves the classic TFS
+payload layout — `u32 major`, `u32 minor`, `u32 build`, and a fixed
+128-byte `csdVersion` buffer — for a total length of 140 bytes. Atlas
+keeps `major`/`minor`/`build` untouched and writes its detection tag
+into `csdVersion`:
 
-| Field         | Value          |
-|---------------|----------------|
-| major         | _unchanged_    |
-| minor         | _unchanged_    |
-| build         | _unchanged_    |
-| **csdVersion**| `0xA71A5000`   |
+| Field         | Bytes | Value                              |
+|---------------|-------|------------------------------------|
+| major         | 4     | _unchanged_                        |
+| minor         | 4     | _unchanged_                        |
+| build         | 4     | _unchanged_                        |
+| **csdVersion**| 128   | ASCII `ATLA` + 124 zero bytes      |
 
-`csdVersion = 'ATLA'` (little-endian "ATLA"). Readers can detect Atlas
-extensions by checking this magic; if absent, the file is a classic OTB
-and only attributes 0x10–0x2F should be expected.
+Readers detect Atlas extensions by checking that the first four bytes
+of `csdVersion` equal `b"ATLA"`. Classic TFS readers ignore the buffer
+contents, so the layout stays binary-compatible — they keep parsing the
+file as a normal OTB.
+
+If the tag is absent, the file is a classic OTB and only attributes
+0x10–0x2F should be expected.
 
 ## Extended item attributes
 

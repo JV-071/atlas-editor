@@ -12,3 +12,6 @@ repository.workspace = true
 atlas-core = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
