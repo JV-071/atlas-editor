@@ -116,7 +116,11 @@ fn encode_item(out: &mut Vec<u8>, item: &OtbItem) {
         tlv(&mut props, ItemAttr::DualWielding as u8, &[v as u8]);
     }
     if let Some(v) = item.expire_flags {
-        tlv(&mut props, ItemAttr::ExpireFlags as u8, &[expire_flags_to_bits(v)]);
+        tlv(
+            &mut props,
+            ItemAttr::ExpireFlags as u8,
+            &[expire_flags_to_bits(v)],
+        );
     }
     if let Some(v) = item.former_object_type_id {
         tlv(
@@ -150,7 +154,7 @@ fn write_escaped(out: &mut Vec<u8>, payload: &[u8]) {
 }
 
 fn flags_to_bits(f: &ItemFlags) -> u32 {
-    (f.block_solid as u32) << 0
+    (f.block_solid as u32)
         | (f.block_projectile as u32) << 1
         | (f.block_pathfind as u32) << 2
         | (f.has_height as u32) << 3

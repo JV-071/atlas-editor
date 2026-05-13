@@ -122,10 +122,22 @@ pub struct SpriteDims {
 impl SpriteDims {
     pub fn from_spritetype(spritetype: u32) -> Result<Self> {
         match spritetype {
-            0 => Ok(Self { width: 32, height: 32 }),
-            1 => Ok(Self { width: 32, height: 64 }),
-            2 => Ok(Self { width: 64, height: 32 }),
-            3 => Ok(Self { width: 64, height: 64 }),
+            0 => Ok(Self {
+                width: 32,
+                height: 32,
+            }),
+            1 => Ok(Self {
+                width: 32,
+                height: 64,
+            }),
+            2 => Ok(Self {
+                width: 64,
+                height: 32,
+            }),
+            3 => Ok(Self {
+                width: 64,
+                height: 64,
+            }),
             other => Err(SpriteError::UnsupportedSpriteType(other)),
         }
     }
@@ -299,8 +311,7 @@ impl Atlas {
             for chunk in pixels[..expected].chunks_exact(4) {
                 rgba.extend_from_slice(&[chunk[2], chunk[1], chunk[0], chunk[3]]);
             }
-            RgbaImage::from_raw(SHEET_SIDE, SHEET_SIDE, rgba)
-                .expect("pre-validated buffer dims")
+            RgbaImage::from_raw(SHEET_SIDE, SHEET_SIDE, rgba).expect("pre-validated buffer dims")
         };
 
         let arc = std::sync::Arc::new(image);
@@ -344,11 +355,17 @@ mod tests {
     fn sprite_dims_reject_unsupported_types() {
         assert_eq!(
             SpriteDims::from_spritetype(0).unwrap(),
-            SpriteDims { width: 32, height: 32 }
+            SpriteDims {
+                width: 32,
+                height: 32
+            }
         );
         assert_eq!(
             SpriteDims::from_spritetype(3).unwrap(),
-            SpriteDims { width: 64, height: 64 }
+            SpriteDims {
+                width: 64,
+                height: 64
+            }
         );
         assert!(matches!(
             SpriteDims::from_spritetype(99),

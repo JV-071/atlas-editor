@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/atlas-kit/atlas-assets-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/atlas-kit/atlas-assets-editor/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-phase_0-orange.svg)](docs/architecture.md)
+[![Status](https://img.shields.io/badge/status-phase_6-blue.svg)](docs/architecture.md)
 
 ## What it is
 
@@ -23,22 +23,37 @@ The format extensions are open and specified in
 
 ## Status
 
-**Phase 0 — bootstrap.** The repository scaffolding compiles end-to-end
-(Rust workspace + Tauri shell + React frontend), but no real editing
-features are implemented yet. See the roadmap below.
+**Phase 6 — usable editor.** Open `appearances.dat` + `items.otb` from
+disk, browse 30k+ items in a virtualized list with category tabs and
+cross-reference badges, edit the common subset of attributes on both
+sides, undo/redo, save with `.bak` backups, create new objects/OTB
+items from scratch, and preview sprites once the client's `assets/`
+directory is pointed at. Multi-OS installers are produced by GitHub
+Actions on tag push.
+
+PNG import for new sprites and the full sprite editor (cut, animate,
+sheet management) are still ahead — see `docs/phase-7-todo.md`.
 
 ## Roadmap
 
-| Phase | Goal                                          |
-|-------|-----------------------------------------------|
-| 0     | Workspace, Tauri shell, CI, docs (current)    |
-| 1     | `atlas-appearances` and `atlas-otb` parsers   |
-| 2     | Open file, virtualized item list, search      |
-| 3     | Attribute editor + save with undo/redo        |
-| 4     | Sprite rendering (read-only)                  |
-| 5     | Multi-OS releases via `tauri-action`          |
-| 6     | Create new items, import PNG → sprites        |
-| 7     | Full sprite editor (cut, animate, sheets)     |
+| Phase | Goal                                          | Status   |
+|-------|-----------------------------------------------|----------|
+| 0     | Workspace, Tauri shell, CI, docs              | ✓ done   |
+| 1     | `atlas-appearances` and `atlas-otb` parsers   | ✓ done   |
+| 2     | Open file, virtualized item list, search      | ✓ done   |
+| 3     | Attribute editor + save with undo/redo        | ✓ done   |
+| 4     | Sprite rendering (read-only)                  | ✓ done¹  |
+| 5     | Multi-OS releases via `tauri-action`          | ✓ done   |
+| 6     | Create new items, import PNG → sprites        | ◑ partial² |
+| 7     | Full sprite editor (cut, animate, sheets)     | ☐ todo   |
+
+¹ Catalog parsing, sheet decompression, and sprite extraction are
+  implemented and unit-tested. The sheet header offset assumes the
+  modern Tibia 12+ layout; flip `Atlas::with_bmp_wrap(true)` if your
+  client uses BMP-wrapped sheets.
+
+² Create-new-item flows are wired in. PNG → sprite import is deferred
+  until Phase 7 because it requires writing into the sprite atlas.
 
 ## Setup
 

@@ -537,14 +537,14 @@ impl AppearanceFlags {
             automap: self.automap.map(|a| proto::AppearanceFlagAutomap {
                 color: Some(a.color),
             }),
-            lenshelp: self.lenshelp.map(|l| proto::AppearanceFlagLenshelp {
-                id: Some(l.id),
-            }),
+            lenshelp: self
+                .lenshelp
+                .map(|l| proto::AppearanceFlagLenshelp { id: Some(l.id) }),
             fullbank: opt_bool(self.fullbank),
             ignore_look: opt_bool(self.ignore_look),
-            clothes: self.clothes.map(|c| proto::AppearanceFlagClothes {
-                slot: Some(c.slot),
-            }),
+            clothes: self
+                .clothes
+                .map(|c| proto::AppearanceFlagClothes { slot: Some(c.slot) }),
             default_action: self
                 .default_action
                 .map(|d| proto::AppearanceFlagDefaultAction {
@@ -631,7 +631,11 @@ impl AppearanceFlags {
 /// `false` in the model — keeping bytes round-trip-equal across the
 /// default case is impossible since the model lost that distinction.
 fn opt_bool(b: bool) -> Option<bool> {
-    if b { Some(true) } else { None }
+    if b {
+        Some(true)
+    } else {
+        None
+    }
 }
 
 fn appearance_to_proto(a: &AppearanceInfo) -> proto::Appearance {
@@ -657,7 +661,7 @@ fn appearance_to_proto(a: &AppearanceInfo) -> proto::Appearance {
 }
 
 impl SpecialMeaningIds {
-    fn to_proto(&self) -> proto::SpecialMeaningAppearanceIds {
+    fn to_proto(self) -> proto::SpecialMeaningAppearanceIds {
         proto::SpecialMeaningAppearanceIds {
             gold_coin_id: self.gold_coin.map(|a| a.0),
             platinum_coin_id: self.platinum_coin.map(|a| a.0),

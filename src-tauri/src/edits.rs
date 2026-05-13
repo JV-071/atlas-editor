@@ -150,8 +150,8 @@ fn apply_otb_field(item: &mut OtbItem, field: &str, value: Value) -> Result<(), 
             Ok(())
         }
         "group" => {
-            item.group = serde_json::from_value::<ItemGroup>(value)
-                .map_err(|e| format!("{field}: {e}"))?;
+            item.group =
+                serde_json::from_value::<ItemGroup>(value).map_err(|e| format!("{field}: {e}"))?;
             Ok(())
         }
         "weapon_type" => {
@@ -202,7 +202,8 @@ fn apply_otb_field(item: &mut OtbItem, field: &str, value: Value) -> Result<(), 
 // ---- value adapters ----
 
 fn require_bool(v: &Value, field: &str) -> Result<bool, String> {
-    v.as_bool().ok_or_else(|| format!("{field} expects boolean"))
+    v.as_bool()
+        .ok_or_else(|| format!("{field} expects boolean"))
 }
 
 fn require_u32(v: &Value, field: &str) -> Result<u32, String> {
@@ -231,7 +232,8 @@ fn optional_u8(v: &Value, field: &str) -> Result<Option<u8>, String> {
     match v {
         Value::Null => Ok(None),
         Value::Number(n) => Ok(Some(
-            n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))? as u8,
+            n.as_u64()
+                .ok_or_else(|| format!("{field} must be unsigned"))? as u8,
         )),
         _ => Err(format!("{field} expects number or null")),
     }
@@ -241,7 +243,8 @@ fn optional_u16(v: &Value, field: &str) -> Result<Option<u16>, String> {
     match v {
         Value::Null => Ok(None),
         Value::Number(n) => Ok(Some(
-            n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))? as u16,
+            n.as_u64()
+                .ok_or_else(|| format!("{field} must be unsigned"))? as u16,
         )),
         _ => Err(format!("{field} expects number or null")),
     }
@@ -251,7 +254,8 @@ fn optional_u32(v: &Value, field: &str) -> Result<Option<u32>, String> {
     match v {
         Value::Null => Ok(None),
         Value::Number(n) => Ok(Some(
-            n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))? as u32,
+            n.as_u64()
+                .ok_or_else(|| format!("{field} must be unsigned"))? as u32,
         )),
         _ => Err(format!("{field} expects number or null")),
     }

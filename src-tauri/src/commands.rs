@@ -101,7 +101,9 @@ impl RecentFiles {
     }
 
     fn save(&self, app: &AppHandle) {
-        let Some(path) = Self::config_path(app) else { return };
+        let Some(path) = Self::config_path(app) else {
+            return;
+        };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -179,7 +181,6 @@ impl WorkspaceState {
             can_redo: !self.future.is_empty(),
         }
     }
-
 }
 
 /// Append `snapshot` to `history`, drop the oldest entries past the
@@ -292,10 +293,7 @@ pub fn update_otb_item_field(
 #[tauri::command]
 pub fn undo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let prev = guard
-        .history
-        .pop()
-        .ok_or("nothing to undo")?;
+    let prev = guard.history.pop().ok_or("nothing to undo")?;
     let current = std::mem::replace(&mut guard.workspace, prev);
     guard.future.push(current);
     guard.dirty = true;
@@ -305,10 +303,7 @@ pub fn undo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, Strin
 #[tauri::command]
 pub fn redo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let next = guard
-        .future
-        .pop()
-        .ok_or("nothing to redo")?;
+    let next = guard.future.pop().ok_or("nothing to redo")?;
     let current = std::mem::replace(&mut guard.workspace, next);
     guard.history.push(current);
     guard.dirty = true;
@@ -316,9 +311,7 @@ pub fn redo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, Strin
 }
 
 #[tauri::command]
-pub fn save_appearances(
-    state: State<'_, SharedWorkspace>,
-) -> Result<WorkspaceSummary, String> {
+pub fn save_appearances(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     let path = guard
         .appearances_path
@@ -329,7 +322,9 @@ pub fn save_appearances(
         .appearances
         .as_ref()
         .ok_or("appearances.dat is not loaded")?;
-    write_with_backup(&path, |dst| appearances.save_to_file(dst).map_err(|e| e.to_string()))?;
+    write_with_backup(&path, |dst| {
+        appearances.save_to_file(dst).map_err(|e| e.to_string())
+    })?;
     guard.dirty = false;
     Ok(guard.summary())
 }
@@ -338,9 +333,7 @@ pub fn save_appearances(
 /// return its id. Auto-snapshots for undo. Frontend should select the
 /// new id to drop the user into the attribute editor.
 #[tauri::command]
-pub fn create_object_appearance(
-    state: State<'_, SharedWorkspace>,
-) -> Result<NewItemInfo, String> {
+pub fn create_object_appearance(state: State<'_, SharedWorkspace>) -> Result<NewItemInfo, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     let snapshot = guard.workspace.clone();
     let appearances = guard
@@ -433,7 +426,9 @@ pub fn save_otb(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, S
         .otb
         .as_ref()
         .ok_or("items.otb is not loaded")?;
-    write_with_backup(&path, |dst| otb.save_to_file(dst).map_err(|e| e.to_string()))?;
+    write_with_backup(&path, |dst| {
+        otb.save_to_file(dst).map_err(|e| e.to_string())
+    })?;
     guard.dirty = false;
     Ok(guard.summary())
 }
@@ -571,7 +566,11 @@ pub fn get_otb_item(
     let Some(otb) = guard.workspace.otb.as_ref() else {
         return Ok(None);
     };
-    Ok(otb.items.iter().find(|i| i.server_id == Some(server_id)).cloned())
+    Ok(otb
+        .items
+        .iter()
+        .find(|i| i.server_id == Some(server_id))
+        .cloned())
 }
 
 /// Point the sprite atlas at the Tibia client's `assets/` directory
@@ -591,8 +590,7 @@ pub fn set_assets_dir(
             .sheets
             .first()
             .map(|s| s.firstspriteid)
-            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid))
-            .map(|(lo, hi)| (lo, hi)),
+            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid)),
     };
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     guard.atlas = Some(atlas);
@@ -628,8 +626,7 @@ pub fn get_assets_dir_info(
             .sheets
             .first()
             .map(|s| s.firstspriteid)
-            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid))
-            .map(|(lo, hi)| (lo, hi)),
+            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid)),
     }))
 }
 
