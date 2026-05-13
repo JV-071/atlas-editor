@@ -58,6 +58,9 @@ interface WorkspaceState {
   pickAssetsDir: () => Promise<void>;
   refreshAssetsDirInfo: () => Promise<void>;
   fetchSpritePng: (spriteId: number) => Promise<string | null>;
+
+  createObjectAppearance: () => Promise<void>;
+  createLinkedOtbItem: () => Promise<void>;
 }
 
 async function pickFile(
@@ -304,6 +307,39 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
       return null;
+    }
+  },
+
+  async createObjectAppearance() {
+    try {
+      const info = await invoke<{ appearanceId: number }>("create_object_appearance");
+      // Refresh summary by piggy-backing on a list refresh; the
+      // create command does not return a fresh summary.
+      const summary = await invoke<WorkspaceSummary>("get_workspace_summary");
+      set({ summary, category: "object" });
+      await get().refreshRows();
+      await get().setSelected(info.appearanceId);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async createLinkedOtbItem() {
+    const { selectedId, category } = get();
+    if (selectedId == null || category !== "object") {
+      set({ error: "Select an object appearance to link the new OTB item to" });
+      return;
+    }
+    try {
+      await invoke<{ appearanceId: number; otbServerId: number | null }>(
+        "create_otb_item",
+        { clientId: selectedId },
+      );
+      const summary = await invoke<WorkspaceSummary>("get_workspace_summary");
+      set({ summary });
+      await Promise.all([get().refreshRows(), get().refreshSelectedDetails()]);
+    } catch (e) {
+      set({ error: String(e) });
     }
   },
 }));

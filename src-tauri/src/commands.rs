@@ -334,6 +334,93 @@ pub fn save_appearances(
     Ok(guard.summary())
 }
 
+/// Append a brand-new object appearance with the next free id and
+/// return its id. Auto-snapshots for undo. Frontend should select the
+/// new id to drop the user into the attribute editor.
+#[tauri::command]
+pub fn create_object_appearance(
+    state: State<'_, SharedWorkspace>,
+) -> Result<NewItemInfo, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let snapshot = guard.workspace.clone();
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_mut()
+        .ok_or("appearances.dat is not loaded")?;
+    let next_id = appearances
+        .objects
+        .iter()
+        .map(|a| a.id.0)
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1);
+    if next_id == u32::MAX {
+        return Err("appearance id space exhausted".into());
+    }
+    let new_appearance = atlas_appearances::AppearanceInfo {
+        id: atlas_appearances::AssetId(next_id),
+        category: atlas_core::AppearanceCategory::Object,
+        ..Default::default()
+    };
+    appearances.objects.push(new_appearance);
+    push_history(&mut guard.history, snapshot);
+    guard.future.clear();
+    guard.dirty = true;
+    Ok(NewItemInfo {
+        appearance_id: next_id,
+        otb_server_id: None,
+    })
+}
+
+/// Append a new OTB item linked to an existing appearance by client_id.
+/// Server_id is auto-allocated as max(existing)+1. Returns both ids so
+/// the frontend can refresh + select the row.
+#[tauri::command]
+pub fn create_otb_item(
+    client_id: u16,
+    state: State<'_, SharedWorkspace>,
+) -> Result<NewItemInfo, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let snapshot = guard.workspace.clone();
+    let otb = guard
+        .workspace
+        .otb
+        .as_mut()
+        .ok_or("items.otb is not loaded")?;
+    let next_server_id = otb
+        .items
+        .iter()
+        .filter_map(|i| i.server_id)
+        .max()
+        .unwrap_or(99)
+        .saturating_add(1);
+    if next_server_id == u16::MAX {
+        return Err("OTB server_id space exhausted".into());
+    }
+    let new_item = atlas_otb::OtbItem {
+        group: atlas_otb::ItemGroup::None,
+        server_id: Some(next_server_id),
+        client_id: Some(client_id),
+        ..Default::default()
+    };
+    otb.items.push(new_item);
+    push_history(&mut guard.history, snapshot);
+    guard.future.clear();
+    guard.dirty = true;
+    Ok(NewItemInfo {
+        appearance_id: client_id as u32,
+        otb_server_id: Some(next_server_id),
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewItemInfo {
+    pub appearance_id: u32,
+    pub otb_server_id: Option<u16>,
+}
+
 #[tauri::command]
 pub fn save_otb(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;

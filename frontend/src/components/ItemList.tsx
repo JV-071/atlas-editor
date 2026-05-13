@@ -1,6 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, GitMerge, Search } from "lucide-react";
+import { AlertTriangle, GitMerge, Plus, Search } from "lucide-react";
 
 import { useWorkspace } from "../stores/workspace";
 import type { AppearanceRow } from "../types";
@@ -21,10 +21,12 @@ export function ItemList() {
   const category = useWorkspace((s) => s.category);
   const rows = useWorkspace((s) => s.rowsByCategory[s.category]);
   const otbLoaded = useWorkspace((s) => s.summary.otbPath !== null);
+  const appearancesLoaded = useWorkspace((s) => s.summary.appearancesPath !== null);
   const query = useWorkspace((s) => s.query);
   const setQuery = useWorkspace((s) => s.setQuery);
   const selectedId = useWorkspace((s) => s.selectedId);
   const setSelected = useWorkspace((s) => s.setSelected);
+  const createObjectAppearance = useWorkspace((s) => s.createObjectAppearance);
 
   const filtered = useMemo(() => {
     if (!query) return rows;
@@ -58,6 +60,16 @@ export function ItemList() {
             <> / {rows.length.toLocaleString()}</>
           )}
         </span>
+        {category === "object" && appearancesLoaded && (
+          <button
+            type="button"
+            onClick={() => void createObjectAppearance()}
+            title="Create new object appearance"
+            className="rounded p-1 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (

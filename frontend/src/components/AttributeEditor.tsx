@@ -405,6 +405,33 @@ const OTB_BOOL_FIELDS: [string, keyof OtbItemFlagsDto, string][] = [
   ["force_use", "forceUse", "force_use"],
 ];
 
+function CreateOtbLink() {
+  const otbLoaded = useWorkspace((s) => s.summary.otbPath !== null);
+  const createLinkedOtbItem = useWorkspace((s) => s.createLinkedOtbItem);
+  if (!otbLoaded) {
+    return (
+      <p className="text-xs text-atlas-muted italic">
+        No OTB entry linked. Open an <code>items.otb</code> file to edit the
+        server-side attributes.
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 border border-atlas-border rounded bg-atlas-paper">
+      <p className="text-xs text-atlas-muted">
+        No OTB item references this appearance.
+      </p>
+      <button
+        type="button"
+        onClick={() => void createLinkedOtbItem()}
+        className="rounded px-2.5 py-1 text-xs font-medium bg-atlas-ink text-atlas-cream hover:bg-atlas-ink-soft"
+      >
+        Create linked OTB item
+      </button>
+    </div>
+  );
+}
+
 export function AttributeEditor() {
   const selectedId = useWorkspace((s) => s.selectedId);
   const category = useWorkspace((s) => s.category);
@@ -481,10 +508,7 @@ export function AttributeEditor() {
         )}
 
         {!otbItem && category === "object" && (
-          <p className="text-xs text-atlas-muted italic">
-            No OTB entry linked. Open an items.otb file to edit the server-side
-            attributes.
-          </p>
+          <CreateOtbLink />
         )}
       </div>
     </div>
