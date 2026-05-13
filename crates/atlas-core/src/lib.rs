@@ -36,6 +36,7 @@ impl std::fmt::Display for AssetId {
 
 /// Logical category of an appearance entry in `appearances.dat`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AppearanceCategory {
     #[default]
     Object,

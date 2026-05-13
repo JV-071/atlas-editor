@@ -36,6 +36,7 @@ fn decode_client_string(bytes: Vec<u8>) -> String {
 
 /// Top-level neutral representation of an `appearances.dat` file.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Appearances {
     pub objects: Vec<AppearanceInfo>,
     pub outfits: Vec<AppearanceInfo>,
@@ -53,6 +54,7 @@ pub struct Appearances {
 /// (round-trip save) will restore that data by either keeping the source
 /// proto alongside the neutral view, or by extending the model.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppearanceInfo {
     pub id: AssetId,
     pub category: AppearanceCategory,
@@ -64,6 +66,7 @@ pub struct AppearanceInfo {
 
 /// Hard-coded protocol ids the client uses for currency, mail, supply stash, etc.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecialMeaningIds {
     pub gold_coin: Option<AssetId>,
     pub platinum_coin: Option<AssetId>,
@@ -81,6 +84,7 @@ pub struct SpecialMeaningIds {
 /// and dropped from repeated enum fields — see the call sites in
 /// `from_proto` for details.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppearanceFlags {
     pub bank: Option<BankInfo>,
     pub clip: bool,
@@ -149,53 +153,63 @@ pub struct AppearanceFlags {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BankInfo {
     pub waypoints: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteInfo {
     pub max_text_length: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteOnceInfo {
     pub max_text_length_once: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LightInfo {
     pub brightness: u32,
     pub color: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ShiftInfo {
     pub x: u32,
     pub y: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HeightInfo {
     pub elevation: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AutomapInfo {
     pub color: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LenshelpInfo {
     pub id: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClothesInfo {
     pub slot: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DefaultActionInfo {
     /// `None` when the proto submessage was present but its action id was
     /// either absent or an unknown forward-compatible value.
@@ -203,11 +217,13 @@ pub struct DefaultActionInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HookInfo {
     pub direction: HookType,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MarketInfo {
     pub category: Option<ItemCategory>,
     pub trade_as_object_id: Option<u32>,
@@ -215,6 +231,7 @@ pub struct MarketInfo {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NpcSaleInfo {
     pub name: Option<String>,
     pub location: Option<String>,
@@ -225,32 +242,38 @@ pub struct NpcSaleInfo {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChangedToExpireInfo {
     pub former_object_typeid: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CyclopediaInfo {
     pub cyclopedia_type: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpgradeClassificationInfo {
     pub upgrade_classification: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SkillWheelGemInfo {
     pub gem_quality_id: Option<u32>,
     pub vocation_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImbueableInfo {
     pub slot_count: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProficiencyInfo {
     pub proficiency_id: u32,
 }
@@ -267,6 +290,23 @@ impl Appearances {
                 .special_meaning_appearance_ids
                 .map(SpecialMeaningIds::from_proto)
                 .unwrap_or_default(),
+        }
+    }
+
+    /// Re-emit the neutral model as a proto message. **Lossy with respect
+    /// to the original `frame_group` structure**: all sprite ids are
+    /// collapsed into a single anonymous `FrameGroup` since the model
+    /// only carries the flattened id list. Animation timings, bounding
+    /// boxes, and pattern dimensions therefore do not survive a save.
+    /// This is fine for v1 (attribute editor) but Phase 4 (sprites) will
+    /// likely need to preserve the original frame group payload.
+    pub fn to_proto(&self) -> proto::Appearances {
+        proto::Appearances {
+            object: self.objects.iter().map(appearance_to_proto).collect(),
+            outfit: self.outfits.iter().map(appearance_to_proto).collect(),
+            effect: self.effects.iter().map(appearance_to_proto).collect(),
+            missile: self.missiles.iter().map(appearance_to_proto).collect(),
+            special_meaning_appearance_ids: Some(self.special_ids.to_proto()),
         }
     }
 }
@@ -444,6 +484,189 @@ impl AppearanceFlags {
                 .collect(),
             minimum_level: p.minimum_level,
             weapon_type: p.weapon_type.and_then(WeaponType::from_i32),
+        }
+    }
+
+    fn to_proto(&self) -> proto::AppearanceFlags {
+        proto::AppearanceFlags {
+            bank: self.bank.map(|b| proto::AppearanceFlagBank {
+                waypoints: Some(b.waypoints),
+            }),
+            clip: opt_bool(self.clip),
+            bottom: opt_bool(self.bottom),
+            top: opt_bool(self.top),
+            container: opt_bool(self.container),
+            cumulative: opt_bool(self.cumulative),
+            usable: opt_bool(self.usable),
+            forceuse: opt_bool(self.forceuse),
+            multiuse: opt_bool(self.multiuse),
+            write: self.write.map(|w| proto::AppearanceFlagWrite {
+                max_text_length: Some(w.max_text_length),
+            }),
+            write_once: self.write_once.map(|w| proto::AppearanceFlagWriteOnce {
+                max_text_length_once: Some(w.max_text_length_once),
+            }),
+            liquidpool: opt_bool(self.liquidpool),
+            unpass: opt_bool(self.unpass),
+            unmove: opt_bool(self.unmove),
+            unsight: opt_bool(self.unsight),
+            avoid: opt_bool(self.avoid),
+            no_movement_animation: opt_bool(self.no_movement_animation),
+            take: opt_bool(self.take),
+            liquidcontainer: opt_bool(self.liquidcontainer),
+            hang: opt_bool(self.hang),
+            hook: self.hook.map(|h| proto::AppearanceFlagHook {
+                direction: Some(h.direction as i32),
+            }),
+            rotate: opt_bool(self.rotate),
+            light: self.light.map(|l| proto::AppearanceFlagLight {
+                brightness: Some(l.brightness),
+                color: Some(l.color),
+            }),
+            dont_hide: opt_bool(self.dont_hide),
+            translucent: opt_bool(self.translucent),
+            shift: self.shift.map(|s| proto::AppearanceFlagShift {
+                x: Some(s.x),
+                y: Some(s.y),
+            }),
+            height: self.height.map(|h| proto::AppearanceFlagHeight {
+                elevation: Some(h.elevation),
+            }),
+            lying_object: opt_bool(self.lying_object),
+            animate_always: opt_bool(self.animate_always),
+            automap: self.automap.map(|a| proto::AppearanceFlagAutomap {
+                color: Some(a.color),
+            }),
+            lenshelp: self.lenshelp.map(|l| proto::AppearanceFlagLenshelp {
+                id: Some(l.id),
+            }),
+            fullbank: opt_bool(self.fullbank),
+            ignore_look: opt_bool(self.ignore_look),
+            clothes: self.clothes.map(|c| proto::AppearanceFlagClothes {
+                slot: Some(c.slot),
+            }),
+            default_action: self
+                .default_action
+                .map(|d| proto::AppearanceFlagDefaultAction {
+                    action: d.action.map(|a| a as i32),
+                }),
+            market: self.market.as_ref().map(|m| proto::AppearanceFlagMarket {
+                category: m.category.map(|c| c as i32),
+                trade_as_object_id: m.trade_as_object_id,
+                show_as_object_id: m.show_as_object_id,
+            }),
+            wrap: opt_bool(self.wrap),
+            unwrap: opt_bool(self.unwrap),
+            topeffect: opt_bool(self.topeffect),
+            npcsaledata: self
+                .npc_sale_data
+                .iter()
+                .map(|n| proto::AppearanceFlagNpc {
+                    name: n.name.as_ref().map(|s| s.as_bytes().to_vec()),
+                    location: n.location.as_ref().map(|s| s.as_bytes().to_vec()),
+                    sale_price: n.sale_price,
+                    buy_price: n.buy_price,
+                    currency_object_type_id: n.currency_object_type_id,
+                    currency_quest_flag_display_name: n
+                        .currency_quest_flag_display_name
+                        .as_ref()
+                        .map(|s| s.as_bytes().to_vec()),
+                })
+                .collect(),
+            changedtoexpire: self
+                .changed_to_expire
+                .map(|c| proto::AppearanceFlagChangedToExpire {
+                    former_object_typeid: Some(c.former_object_typeid),
+                }),
+            corpse: opt_bool(self.corpse),
+            player_corpse: opt_bool(self.player_corpse),
+            cyclopediaitem: self
+                .cyclopedia_item
+                .map(|c| proto::AppearanceFlagCyclopedia {
+                    cyclopedia_type: Some(c.cyclopedia_type),
+                }),
+            ammo: opt_bool(self.ammo),
+            show_off_socket: opt_bool(self.show_off_socket),
+            reportable: opt_bool(self.reportable),
+            upgradeclassification: self.upgrade_classification.map(|u| {
+                proto::AppearanceFlagUpgradeClassification {
+                    upgrade_classification: Some(u.upgrade_classification),
+                }
+            }),
+            reverse_addons_east: opt_bool(self.reverse_addons_east),
+            reverse_addons_west: opt_bool(self.reverse_addons_west),
+            reverse_addons_south: opt_bool(self.reverse_addons_south),
+            reverse_addons_north: opt_bool(self.reverse_addons_north),
+            wearout: opt_bool(self.wearout),
+            clockexpire: opt_bool(self.clockexpire),
+            expire: opt_bool(self.expire),
+            expirestop: opt_bool(self.expirestop),
+            deco_item_kit: opt_bool(self.deco_item_kit),
+            skillwheel_gem: self
+                .skillwheel_gem
+                .map(|s| proto::AppearanceFlagSkillWheelGem {
+                    gem_quality_id: s.gem_quality_id,
+                    vocation_id: s.vocation_id,
+                }),
+            dual_wielding: opt_bool(self.dual_wielding),
+            imbueable: self.imbueable.map(|i| proto::AppearanceFlagImbueable {
+                slot_count: Some(i.slot_count),
+            }),
+            proficiency: self.proficiency.map(|p| proto::AppearanceFlagProficiency {
+                proficiency_id: Some(p.proficiency_id),
+            }),
+            restrict_to_vocation: self
+                .restrict_to_vocation
+                .iter()
+                .map(|v| *v as i32)
+                .collect(),
+            minimum_level: self.minimum_level,
+            weapon_type: self.weapon_type.map(|w| w as i32),
+        }
+    }
+}
+
+/// Serialize bools that default to `false` as `None` rather than
+/// `Some(false)`. Mirrors the from_proto path which collapses both to
+/// `false` in the model — keeping bytes round-trip-equal across the
+/// default case is impossible since the model lost that distinction.
+fn opt_bool(b: bool) -> Option<bool> {
+    if b { Some(true) } else { None }
+}
+
+fn appearance_to_proto(a: &AppearanceInfo) -> proto::Appearance {
+    let frame_group = if a.sprite_ids.is_empty() {
+        vec![]
+    } else {
+        vec![proto::FrameGroup {
+            fixed_frame_group: None,
+            id: Some(0),
+            sprite_info: Some(proto::SpriteInfo {
+                sprite_id: a.sprite_ids.clone(),
+                ..Default::default()
+            }),
+        }]
+    };
+    proto::Appearance {
+        id: Some(a.id.0),
+        frame_group,
+        flags: Some(a.flags.to_proto()),
+        name: a.name.as_ref().map(|s| s.as_bytes().to_vec()),
+        description: a.description.as_ref().map(|s| s.as_bytes().to_vec()),
+    }
+}
+
+impl SpecialMeaningIds {
+    fn to_proto(&self) -> proto::SpecialMeaningAppearanceIds {
+        proto::SpecialMeaningAppearanceIds {
+            gold_coin_id: self.gold_coin.map(|a| a.0),
+            platinum_coin_id: self.platinum_coin.map(|a| a.0),
+            crystal_coin_id: self.crystal_coin.map(|a| a.0),
+            tibia_coin_id: self.tibia_coin.map(|a| a.0),
+            stamped_letter_id: self.stamped_letter.map(|a| a.0),
+            supply_stash_id: self.supply_stash.map(|a| a.0),
+            standard_reward_chest_id: self.standard_reward_chest.map(|a| a.0),
+            blank_imbuement_scroll_id: self.blank_imbuement_scroll.map(|a| a.0),
         }
     }
 }

@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileText, FolderOpen, X } from "lucide-react";
+import {
+  ChevronDown,
+  FileText,
+  FolderOpen,
+  Redo2,
+  Save,
+  Undo2,
+  X,
+} from "lucide-react";
 
 import { useWorkspace } from "../stores/workspace";
 import { cn } from "../lib/utils";
@@ -80,8 +88,33 @@ export function FileBar() {
   const openAppearancesPath = useWorkspace((s) => s.openAppearancesPath);
   const openOtbPath = useWorkspace((s) => s.openOtbPath);
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
+  const undo = useWorkspace((s) => s.undo);
+  const redo = useWorkspace((s) => s.redo);
+  const saveAppearances = useWorkspace((s) => s.saveAppearances);
+  const saveOtb = useWorkspace((s) => s.saveOtb);
 
   const hasAnything = summary.appearancesPath || summary.otbPath;
+
+  // Keyboard shortcuts: Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo, Ctrl+S save
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void undo();
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        void redo();
+      } else if (key === "s") {
+        e.preventDefault();
+        if (summary.appearancesPath) void saveAppearances();
+        if (summary.otbPath) void saveOtb();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo, saveAppearances, saveOtb, summary.appearancesPath, summary.otbPath]);
 
   return (
     <header className="border-b border-atlas-border bg-atlas-paper px-4 py-3 flex items-center gap-3">
@@ -143,16 +176,70 @@ export function FileBar() {
         {error && <span className="text-rose-700">{error}</span>}
       </div>
 
-      {hasAnything && (
+      <div className="flex items-center gap-1">
         <button
           type="button"
-          onClick={closeWorkspace}
-          title="Close workspace"
-          className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+          onClick={() => void undo()}
+          disabled={!summary.canUndo}
+          title="Undo (Ctrl+Z)"
+          className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
         >
-          <X className="h-4 w-4" />
+          <Undo2 className="h-4 w-4" />
         </button>
-      )}
+        <button
+          type="button"
+          onClick={() => void redo()}
+          disabled={!summary.canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+          className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+        >
+          <Redo2 className="h-4 w-4" />
+        </button>
+
+        {summary.appearancesPath && (
+          <button
+            type="button"
+            onClick={() => void saveAppearances()}
+            title="Save appearances.dat (Ctrl+S also saves both)"
+            className={cn(
+              "ml-1 inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
+              summary.dirty
+                ? "bg-amber-600 text-atlas-cream hover:bg-amber-700"
+                : "border border-atlas-border text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand",
+            )}
+          >
+            <Save className="h-3.5 w-3.5" />
+            .dat
+          </button>
+        )}
+        {summary.otbPath && (
+          <button
+            type="button"
+            onClick={() => void saveOtb()}
+            title="Save items.otb"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
+              summary.dirty
+                ? "bg-amber-600 text-atlas-cream hover:bg-amber-700"
+                : "border border-atlas-border text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand",
+            )}
+          >
+            <Save className="h-3.5 w-3.5" />
+            .otb
+          </button>
+        )}
+
+        {hasAnything && (
+          <button
+            type="button"
+            onClick={closeWorkspace}
+            title="Close workspace"
+            className="ml-1 rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </header>
   );
 }

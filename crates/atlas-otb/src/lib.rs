@@ -22,12 +22,13 @@ use atlas_core::{AtlasError, HookType, Result, Vocation, WeaponType};
 mod attrs;
 pub mod model;
 mod tree;
+mod writer;
 
 pub use atlas_core::AssetId;
 pub use model::{ExpireFlags, ItemAttr, ItemFlags, ItemGroup, Otb, OtbHeader, OtbItem};
 
-const ROOT_ATTR_VERSION: u8 = 0x01;
-const VERSION_PAYLOAD_LEN: usize = 4 + 4 + 4 + 128;
+pub(crate) const ROOT_ATTR_VERSION: u8 = 0x01;
+pub(crate) const VERSION_PAYLOAD_LEN: usize = 4 + 4 + 4 + 128;
 
 impl Otb {
     /// Read an `items.otb` file from disk and parse it.

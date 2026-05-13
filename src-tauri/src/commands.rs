@@ -13,11 +13,19 @@ use atlas_appearances::{AppearanceInfo, Appearances};
 use atlas_otb::Otb;
 use atlas_workspace::Workspace;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
+use crate::edits::{self, AppearanceScope};
+
+/// Maximum number of snapshots kept in undo history. Each snapshot is a
+/// full `Workspace` clone (~few MB for a real catalog), so the cap is
+/// what keeps memory bounded under heavy editing sessions.
+const HISTORY_LIMIT: usize = 64;
+
 /// Lightweight summary of what's currently loaded. Returned by every
-/// `open_*` / `close_workspace` call so the frontend can refresh its
-/// header without a second round-trip.
+/// `open_*` / `close_workspace` / mutation call so the frontend can
+/// refresh its header without a second round-trip.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
@@ -28,6 +36,9 @@ pub struct WorkspaceSummary {
     pub effect_count: usize,
     pub missile_count: usize,
     pub otb_item_count: usize,
+    pub dirty: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
 }
 
 /// Row shape for the virtualized item list. Kept deliberately small —
@@ -113,14 +124,18 @@ impl RecentFiles {
 }
 
 /// Server-side state container. Holds the parsed `Workspace` plus the
-/// disk paths the user picked. Wrapped in `Mutex` so commands can take
-/// `&Self` and still mutate.
+/// disk paths the user picked, MRU list, and the undo/redo snapshot
+/// stacks. Wrapped in `Mutex` so commands can take `&Self` and still
+/// mutate.
 #[derive(Default)]
 pub struct WorkspaceState {
     pub workspace: Workspace,
     pub appearances_path: Option<PathBuf>,
     pub otb_path: Option<PathBuf>,
     pub recent: RecentFiles,
+    pub history: Vec<Workspace>,
+    pub future: Vec<Workspace>,
+    pub dirty: bool,
 }
 
 impl WorkspaceState {
@@ -153,7 +168,22 @@ impl WorkspaceState {
             effect_count,
             missile_count,
             otb_item_count,
+            dirty: self.dirty,
+            can_undo: !self.history.is_empty(),
+            can_redo: !self.future.is_empty(),
         }
+    }
+
+}
+
+/// Append `snapshot` to `history`, drop the oldest entries past the
+/// limit. Kept as a free function so both edit commands can call it
+/// without re-borrowing the same WorkspaceState mutably twice.
+fn push_history(history: &mut Vec<Workspace>, snapshot: Workspace) {
+    history.push(snapshot);
+    if history.len() > HISTORY_LIMIT {
+        let excess = history.len() - HISTORY_LIMIT;
+        history.drain(0..excess);
     }
 }
 
@@ -171,6 +201,10 @@ pub fn open_appearances(
     guard.appearances_path = Some(PathBuf::from(&path));
     guard.recent.record_appearances(path);
     guard.recent.save(&app);
+    // Loading new content invalidates undo history.
+    guard.history.clear();
+    guard.future.clear();
+    guard.dirty = false;
     Ok(guard.summary())
 }
 
@@ -186,6 +220,9 @@ pub fn open_otb(
     guard.otb_path = Some(PathBuf::from(&path));
     guard.recent.record_otb(path);
     guard.recent.save(&app);
+    guard.history.clear();
+    guard.future.clear();
+    guard.dirty = false;
     Ok(guard.summary())
 }
 
@@ -199,6 +236,131 @@ pub fn close_workspace(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSum
         ..WorkspaceState::default()
     };
     Ok(guard.summary())
+}
+
+#[tauri::command]
+pub fn update_appearance_field(
+    scope: AppearanceScope,
+    id: u32,
+    field: String,
+    value: Value,
+    state: State<'_, SharedWorkspace>,
+) -> Result<WorkspaceSummary, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let snapshot = guard.workspace.clone();
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_mut()
+        .ok_or("appearances.dat is not loaded")?;
+    edits::update_appearance_field(appearances, scope, id, &field, value)?;
+    // Only push the snapshot now that the edit succeeded — failed
+    // validation should not pollute undo history.
+    push_history(&mut guard.history, snapshot);
+    guard.future.clear();
+    guard.dirty = true;
+    Ok(guard.summary())
+}
+
+#[tauri::command]
+pub fn update_otb_item_field(
+    server_id: u16,
+    field: String,
+    value: Value,
+    state: State<'_, SharedWorkspace>,
+) -> Result<WorkspaceSummary, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let snapshot = guard.workspace.clone();
+    let otb = guard
+        .workspace
+        .otb
+        .as_mut()
+        .ok_or("items.otb is not loaded")?;
+    edits::update_otb_item_field(otb, server_id, &field, value)?;
+    push_history(&mut guard.history, snapshot);
+    guard.future.clear();
+    guard.dirty = true;
+    Ok(guard.summary())
+}
+
+#[tauri::command]
+pub fn undo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let prev = guard
+        .history
+        .pop()
+        .ok_or("nothing to undo")?;
+    let current = std::mem::replace(&mut guard.workspace, prev);
+    guard.future.push(current);
+    guard.dirty = true;
+    Ok(guard.summary())
+}
+
+#[tauri::command]
+pub fn redo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let next = guard
+        .future
+        .pop()
+        .ok_or("nothing to redo")?;
+    let current = std::mem::replace(&mut guard.workspace, next);
+    guard.history.push(current);
+    guard.dirty = true;
+    Ok(guard.summary())
+}
+
+#[tauri::command]
+pub fn save_appearances(
+    state: State<'_, SharedWorkspace>,
+) -> Result<WorkspaceSummary, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let path = guard
+        .appearances_path
+        .clone()
+        .ok_or("no appearances.dat path on record — load one first")?;
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .ok_or("appearances.dat is not loaded")?;
+    write_with_backup(&path, |dst| appearances.save_to_file(dst).map_err(|e| e.to_string()))?;
+    guard.dirty = false;
+    Ok(guard.summary())
+}
+
+#[tauri::command]
+pub fn save_otb(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let path = guard
+        .otb_path
+        .clone()
+        .ok_or("no items.otb path on record — load one first")?;
+    let otb = guard
+        .workspace
+        .otb
+        .as_ref()
+        .ok_or("items.otb is not loaded")?;
+    write_with_backup(&path, |dst| otb.save_to_file(dst).map_err(|e| e.to_string()))?;
+    guard.dirty = false;
+    Ok(guard.summary())
+}
+
+/// Copy the existing file to `<path>.bak` (overwriting any previous bak)
+/// before invoking the writer. Skips the backup step silently if the
+/// source file does not exist yet.
+fn write_with_backup<F>(path: &PathBuf, writer: F) -> Result<(), String>
+where
+    F: FnOnce(&PathBuf) -> Result<(), String>,
+{
+    if path.exists() {
+        let bak = path.with_extension(
+            path.extension()
+                .map(|e| format!("{}.bak", e.to_string_lossy()))
+                .unwrap_or_else(|| "bak".into()),
+        );
+        std::fs::copy(path, &bak).map_err(|e| format!("backup failed: {e}"))?;
+    }
+    writer(path)
 }
 
 #[tauri::command]
@@ -282,4 +444,39 @@ pub fn hydrate_recent_files(app: &AppHandle, state: &SharedWorkspace) {
     if let Ok(mut guard) = state.lock() {
         guard.recent = recent;
     }
+}
+
+/// Full appearance payload for the attribute editor. Returns `None` if
+/// no appearance with that id exists in the given category.
+#[tauri::command]
+pub fn get_appearance(
+    scope: AppearanceScope,
+    id: u32,
+    state: State<'_, SharedWorkspace>,
+) -> Result<Option<AppearanceInfo>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let Some(app) = guard.workspace.appearances.as_ref() else {
+        return Ok(None);
+    };
+    let list: &[AppearanceInfo] = match scope {
+        AppearanceScope::Object => &app.objects,
+        AppearanceScope::Outfit => &app.outfits,
+        AppearanceScope::Effect => &app.effects,
+        AppearanceScope::Missile => &app.missiles,
+    };
+    Ok(list.iter().find(|a| a.id.0 == id).cloned())
+}
+
+/// Full OTB item payload for the attribute editor. Returns `None` when
+/// no item has the given server_id.
+#[tauri::command]
+pub fn get_otb_item(
+    server_id: u16,
+    state: State<'_, SharedWorkspace>,
+) -> Result<Option<atlas_otb::OtbItem>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let Some(otb) = guard.workspace.otb.as_ref() else {
+        return Ok(None);
+    };
+    Ok(otb.items.iter().find(|i| i.server_id == Some(server_id)).cloned())
 }

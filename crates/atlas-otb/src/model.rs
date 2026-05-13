@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// Top-level parsed representation of an `items.otb` file.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Otb {
     pub header: OtbHeader,
     pub items: Vec<OtbItem>,
@@ -20,6 +21,7 @@ pub struct Otb {
 /// `csd_version` as a `Vec<u8>` to make serde-deriving free; the length is
 /// always 128 after a successful parse.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OtbHeader {
     pub major: u32,
     pub minor: u32,
@@ -133,6 +135,7 @@ impl ItemGroup {
 
 /// 32-bit bitfield stored right after every item node's kind byte.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ItemFlags {
     pub block_solid: bool,
     pub block_projectile: bool,
@@ -197,6 +200,7 @@ impl ItemFlags {
 
 /// Decoded payload of the 0x89 `EXPIREFLAGS` attribute.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExpireFlags {
     pub wearout: bool,
     pub clock_expire: bool,
@@ -220,6 +224,7 @@ impl ExpireFlags {
 /// disk is distinguishable from a default value. Atlas-extension fields
 /// follow the same convention.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OtbItem {
     pub group: ItemGroup,
     pub flags: ItemFlags,

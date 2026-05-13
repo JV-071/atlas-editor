@@ -50,6 +50,23 @@ impl Appearances {
             .map_err(|e| AtlasError::InvalidFormat(format!("protobuf decode: {e}")))?;
         Ok(Self::from_proto(proto))
     }
+
+    /// Encode the model back to a fresh `Vec<u8>` ready to drop on disk.
+    /// Lossy with respect to frame-group structure — see [`Self::to_proto`].
+    pub fn encode_to_vec(&self) -> Vec<u8> {
+        self.to_proto().encode_to_vec()
+    }
+
+    /// Atomic-ish save: write to a sibling `.tmp` then rename. Callers
+    /// that want a `.bak` should snapshot the prior file before calling.
+    pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
+        let bytes = self.encode_to_vec();
+        let path = path.as_ref();
+        let tmp = path.with_extension("dat.tmp");
+        std::fs::write(&tmp, bytes)?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -317,6 +334,28 @@ mod tests {
         let loaded = Appearances::load_from_bytes(&bytes).expect("decode should succeed");
         let expected = Appearances::from_proto(source);
         assert_eq!(loaded, expected);
+    }
+
+    /// The new save path: build a model, encode it, load it, and assert
+    /// equality. Locks in the contract that `from_proto(to_proto(m)) == m`
+    /// for everything the model actually carries (frame group structure
+    /// is intentionally lossy; sprite_ids survive).
+    #[test]
+    fn encode_to_vec_round_trip_via_model() {
+        let original = Appearances::from_proto(sample_proto());
+        let bytes = original.encode_to_vec();
+        let reparsed = Appearances::load_from_bytes(&bytes).expect("re-decode should succeed");
+        assert_eq!(reparsed, original);
+    }
+
+    #[test]
+    fn save_to_file_round_trip() {
+        let original = Appearances::from_proto(sample_proto());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.dat");
+        original.save_to_file(&path).expect("save should succeed");
+        let reloaded = Appearances::load_from_file(&path).expect("reload should succeed");
+        assert_eq!(reloaded, original);
     }
 
     #[test]

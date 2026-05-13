@@ -4,6 +4,7 @@
 //! crates and exposes them to the frontend through Tauri commands.
 
 mod commands;
+mod edits;
 
 use commands::{SharedWorkspace, WorkspaceState};
 use tauri::Manager;
@@ -36,6 +37,14 @@ pub fn run() {
             commands::get_workspace_summary,
             commands::get_recent_files,
             commands::list_appearances,
+            commands::get_appearance,
+            commands::get_otb_item,
+            commands::update_appearance_field,
+            commands::update_otb_item_field,
+            commands::undo,
+            commands::redo,
+            commands::save_appearances,
+            commands::save_otb,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

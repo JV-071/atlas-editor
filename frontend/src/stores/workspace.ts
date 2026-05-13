@@ -7,8 +7,10 @@ import {
   emptyRecent,
   emptyRowsByCategory,
   emptySummary,
+  type AppearanceInfoDto,
   type AppearanceRow,
   type Category,
+  type OtbItemDto,
   type RecentFiles,
   type WorkspaceSummary,
 } from "../types";
@@ -20,13 +22,19 @@ interface WorkspaceState {
   rowsByCategory: Record<Category, AppearanceRow[]>;
   category: Category;
   selectedId: number | null;
+  /// Full appearance payload for the editor, refreshed whenever the
+  /// selection changes or a mutation lands.
+  selectedAppearance: AppearanceInfoDto | null;
+  /// Linked OTB item (only meaningful when category === "object" and
+  /// the appearance has an `otbServerId`).
+  selectedOtbItem: OtbItemDto | null;
   query: string;
   status: LoadStatus;
   error: string | null;
   recent: RecentFiles;
 
   setQuery: (query: string) => void;
-  setSelected: (id: number | null) => void;
+  setSelected: (id: number | null) => Promise<void>;
   setCategory: (category: Category) => void;
 
   openAppearancesPicker: () => Promise<void>;
@@ -36,6 +44,14 @@ interface WorkspaceState {
   closeWorkspace: () => Promise<void>;
   refreshRows: () => Promise<void>;
   refreshRecent: () => Promise<void>;
+  refreshSelectedDetails: () => Promise<void>;
+
+  updateAppearanceField: (field: string, value: unknown) => Promise<void>;
+  updateOtbItemField: (field: string, value: unknown) => Promise<void>;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+  saveAppearances: () => Promise<void>;
+  saveOtb: () => Promise<void>;
 }
 
 async function pickFile(
@@ -54,9 +70,6 @@ async function pickFile(
 }
 
 async function fetchAllCategories(): Promise<Record<Category, AppearanceRow[]>> {
-  // Pull each category in parallel — total payload for a real
-  // appearances.dat is a few MB and the virtualizer handles 30k rows
-  // fine, so eager-load all four and let tab switching be instant.
   const results = await Promise.all(
     CATEGORIES.map((cat) =>
       invoke<AppearanceRow[]>("list_appearances", { category: cat }).then(
@@ -72,14 +85,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   rowsByCategory: emptyRowsByCategory,
   category: "object",
   selectedId: null,
+  selectedAppearance: null,
+  selectedOtbItem: null,
   query: "",
   status: "idle",
   error: null,
   recent: emptyRecent,
 
   setQuery: (query) => set({ query }),
-  setSelected: (id) => set({ selectedId: id }),
-  setCategory: (category) => set({ category, selectedId: null, query: "" }),
+  setCategory: (category) =>
+    set({
+      category,
+      selectedId: null,
+      selectedAppearance: null,
+      selectedOtbItem: null,
+      query: "",
+    }),
+
+  async setSelected(id) {
+    set({ selectedId: id, selectedAppearance: null, selectedOtbItem: null });
+    if (id == null) return;
+    await get().refreshSelectedDetails();
+  },
 
   async openAppearancesPicker() {
     const path = await pickFile("Open appearances.dat", "appearances", ["dat"]);
@@ -109,11 +136,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     try {
       const summary = await invoke<WorkspaceSummary>("open_otb", { path });
       set({ summary, status: "idle" });
-      // OTB load enriches existing object rows with cross-ref data;
-      // refresh so badges + server_id show up.
       const tasks: Promise<unknown>[] = [get().refreshRecent()];
       if (summary.objectCount > 0) tasks.push(get().refreshRows());
       await Promise.all(tasks);
+      // If something was already selected, refresh the linked OTB side.
+      if (get().selectedId != null) await get().refreshSelectedDetails();
     } catch (e) {
       set({ status: "error", error: String(e) });
     }
@@ -125,6 +152,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       summary,
       rowsByCategory: emptyRowsByCategory,
       selectedId: null,
+      selectedAppearance: null,
+      selectedOtbItem: null,
       query: "",
       error: null,
     });
@@ -138,5 +167,100 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   async refreshRecent() {
     const recent = await invoke<RecentFiles>("get_recent_files");
     set({ recent });
+  },
+
+  async refreshSelectedDetails() {
+    const { selectedId, category, rowsByCategory } = get();
+    if (selectedId == null) {
+      set({ selectedAppearance: null, selectedOtbItem: null });
+      return;
+    }
+    const appearance = await invoke<AppearanceInfoDto | null>("get_appearance", {
+      scope: category,
+      id: selectedId,
+    });
+    let otbItem: OtbItemDto | null = null;
+    const row = rowsByCategory[category].find((r) => r.id === selectedId);
+    if (row?.otbServerId != null) {
+      otbItem = await invoke<OtbItemDto | null>("get_otb_item", {
+        serverId: row.otbServerId,
+      });
+    }
+    set({ selectedAppearance: appearance, selectedOtbItem: otbItem });
+  },
+
+  async updateAppearanceField(field, value) {
+    const { category, selectedId } = get();
+    if (selectedId == null) return;
+    try {
+      const summary = await invoke<WorkspaceSummary>("update_appearance_field", {
+        scope: category,
+        id: selectedId,
+        field,
+        value,
+      });
+      set({ summary, error: null });
+      await get().refreshSelectedDetails();
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async updateOtbItemField(field, value) {
+    const { selectedOtbItem } = get();
+    if (selectedOtbItem?.serverId == null) return;
+    try {
+      const summary = await invoke<WorkspaceSummary>("update_otb_item_field", {
+        serverId: selectedOtbItem.serverId,
+        field,
+        value,
+      });
+      set({ summary, error: null });
+      // OTB edits can affect the visible row (name, server_id changes
+      // would shift the cross-ref). Refresh both.
+      await Promise.all([get().refreshSelectedDetails(), get().refreshRows()]);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async undo() {
+    if (!get().summary.canUndo) return;
+    try {
+      const summary = await invoke<WorkspaceSummary>("undo");
+      set({ summary, error: null });
+      await Promise.all([get().refreshRows(), get().refreshSelectedDetails()]);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async redo() {
+    if (!get().summary.canRedo) return;
+    try {
+      const summary = await invoke<WorkspaceSummary>("redo");
+      set({ summary, error: null });
+      await Promise.all([get().refreshRows(), get().refreshSelectedDetails()]);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async saveAppearances() {
+    try {
+      const summary = await invoke<WorkspaceSummary>("save_appearances");
+      set({ summary, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async saveOtb() {
+    try {
+      const summary = await invoke<WorkspaceSummary>("save_otb");
+      set({ summary, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 }));
