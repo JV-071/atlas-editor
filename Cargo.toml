@@ -5,6 +5,7 @@ members = [
     "crates/atlas-otb",
     "crates/atlas-sprites",
     "crates/atlas-core",
+    "crates/atlas-workspace",
     "src-tauri",
 ]
 
@@ -23,6 +24,7 @@ atlas-appearances = { path = "crates/atlas-appearances" }
 atlas-otb = { path = "crates/atlas-otb" }
 atlas-sprites = { path = "crates/atlas-sprites" }
 atlas-core = { path = "crates/atlas-core" }
+atlas-workspace = { path = "crates/atlas-workspace" }
 
 # Protobuf
 prost = "0.13"

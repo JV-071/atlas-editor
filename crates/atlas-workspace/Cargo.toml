@@ -1,0 +1,15 @@
+[package]
+name = "atlas-workspace"
+description = "Cross-format glue between atlas-appearances and atlas-otb (client_id linking, attribute sync)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+atlas-core = { workspace = true }
+atlas-appearances = { workspace = true }
+atlas-otb = { workspace = true }
+serde = { workspace = true }
