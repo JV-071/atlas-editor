@@ -1,53 +1,91 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo } from "react";
 
-export default function App() {
-  const [greeting, setGreeting] = useState<string>("");
-  const [name, setName] = useState<string>("");
+import { FileBar } from "./components/FileBar";
+import { ItemList } from "./components/ItemList";
+import { CATEGORY_META, Tabs } from "./components/Tabs";
+import { useWorkspace } from "./stores/workspace";
+import { cn } from "./lib/utils";
 
-  async function handleGreet() {
-    const msg = await invoke<string>("greet", { name });
-    setGreeting(msg);
+function DetailPanel() {
+  const selectedId = useWorkspace((s) => s.selectedId);
+  const rows = useWorkspace((s) => s.rowsByCategory[s.category]);
+  const category = useWorkspace((s) => s.category);
+  const selected = useMemo(
+    () => (selectedId == null ? null : rows.find((r) => r.id === selectedId) ?? null),
+    [selectedId, rows],
+  );
+
+  if (!selected) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-atlas-muted text-sm">
+        Select an item from the list to inspect it.
+      </div>
+    );
   }
 
+  const meta = CATEGORY_META[category];
+  const Icon = meta.icon;
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8 gap-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold tracking-tight">
-          Atlas Assets Editor
-        </h1>
-        <p className="text-slate-400 max-w-xl">
-          Bridging legacy OTB and modern appearances.dat into a single
-          workspace for Tibia 15.x.
-        </p>
+    <div className="flex-1 p-6 overflow-auto">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon className={cn("h-5 w-5 shrink-0", meta.iconClass)} />
+        <h2 className="text-xl font-semibold text-atlas-ink">
+          {selected.name ?? <span className="italic text-atlas-muted">(unnamed)</span>}
+        </h2>
       </div>
-
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your name"
-          className="px-3 py-2 rounded bg-slate-800 border border-slate-700 focus:outline-none focus:border-slate-500"
-        />
-        <button
-          type="button"
-          onClick={handleGreet}
-          className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 transition-colors font-medium"
-        >
-          Test IPC
-        </button>
-      </div>
-
-      {greeting && (
-        <div className="px-4 py-2 rounded bg-slate-800 text-slate-200">
-          {greeting}
-        </div>
+      <p className="text-sm text-atlas-muted font-mono">
+        <span className={meta.textClass}>{category}</span> · id {selected.id}
+        {selected.otbServerId != null && <> · otb server_id {selected.otbServerId}</>}
+        {" · "}
+        {selected.spriteCount} sprite(s)
+      </p>
+      {(selected.isAppearanceOrphan || selected.hasOtbCollision) && (
+        <ul className="mt-3 text-xs space-y-1">
+          {selected.isAppearanceOrphan && (
+            <li className="text-amber-700">⚠ No OTB entry references this appearance.</li>
+          )}
+          {selected.hasOtbCollision && (
+            <li className="text-rose-700">⚠ Multiple OTB items resolve to this appearance.</li>
+          )}
+        </ul>
       )}
+      <p className="mt-6 text-sm text-atlas-ink-soft">
+        Attribute editor lands in Phase 3.
+      </p>
+    </div>
+  );
+}
 
-      <footer className="mt-8 text-xs text-slate-500">
-        v0.1.0 · Phase 0 bootstrap
+export default function App() {
+  const summary = useWorkspace((s) => s.summary);
+  const refreshRows = useWorkspace((s) => s.refreshRows);
+  const refreshRecent = useWorkspace((s) => s.refreshRecent);
+
+  // On reload during `tauri dev`, the backend retains its state — refresh
+  // the row cache + recent_files so the UI matches whatever is still in
+  // memory (and what was persisted before).
+  useEffect(() => {
+    void refreshRows();
+    void refreshRecent();
+  }, [refreshRows, refreshRecent]);
+
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-atlas-cream text-atlas-ink">
+      <FileBar />
+      <Tabs />
+      <main className="flex flex-1 min-h-0">
+        <aside className="w-[360px] shrink-0 min-h-0">
+          <ItemList />
+        </aside>
+        <DetailPanel />
+      </main>
+      <footer className="border-t border-atlas-border bg-atlas-paper px-4 py-1.5 text-xs text-atlas-muted flex items-center justify-between">
+        <span>Atlas Assets Editor · Phase 2</span>
+        <span>
+          {summary.objectCount.toLocaleString()} objects ·{" "}
+          {summary.otbItemCount.toLocaleString()} otb items
+        </span>
       </footer>
-    </main>
+    </div>
   );
 }

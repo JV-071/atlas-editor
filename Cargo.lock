@@ -225,6 +225,7 @@ dependencies = [
  "atlas-core",
  "atlas-otb",
  "atlas-sprites",
+ "atlas-workspace",
  "serde",
  "serde_json",
  "tauri",

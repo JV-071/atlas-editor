@@ -5,6 +5,9 @@
 
 mod commands;
 
+use commands::{SharedWorkspace, WorkspaceState};
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -17,7 +20,23 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![commands::greet])
+        .manage(SharedWorkspace::new(WorkspaceState::default()))
+        .setup(|app| {
+            // app_config_dir requires the runtime AppHandle, so MRU
+            // hydration cannot happen at `manage()` time.
+            let handle = app.handle().clone();
+            let state = app.state::<SharedWorkspace>();
+            commands::hydrate_recent_files(&handle, &state);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::open_appearances,
+            commands::open_otb,
+            commands::close_workspace,
+            commands::get_workspace_summary,
+            commands::get_recent_files,
+            commands::list_appearances,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

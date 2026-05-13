@@ -45,6 +45,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Claude Code session files (not tracked)
+.claude/
+
 # Misc
 *.swp
 *.swo

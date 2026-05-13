@@ -20,6 +20,7 @@ atlas-core = { workspace = true }
 atlas-appearances = { workspace = true }
 atlas-otb = { workspace = true }
 atlas-sprites = { workspace = true }
+atlas-workspace = { workspace = true }
 
 tauri = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
