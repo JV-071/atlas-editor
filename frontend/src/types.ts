@@ -193,3 +193,9 @@ export const emptyRowsByCategory: Record<Category, AppearanceRow[]> = {
   effect: [],
   missile: [],
 };
+
+export interface AssetsDirInfo {
+  path: string;
+  sheetCount: number;
+  spriteIdRange: [number, number] | null;
+}

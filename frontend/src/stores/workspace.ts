@@ -9,6 +9,7 @@ import {
   emptySummary,
   type AppearanceInfoDto,
   type AppearanceRow,
+  type AssetsDirInfo,
   type Category,
   type OtbItemDto,
   type RecentFiles,
@@ -32,6 +33,7 @@ interface WorkspaceState {
   status: LoadStatus;
   error: string | null;
   recent: RecentFiles;
+  assetsDir: AssetsDirInfo | null;
 
   setQuery: (query: string) => void;
   setSelected: (id: number | null) => Promise<void>;
@@ -52,6 +54,10 @@ interface WorkspaceState {
   redo: () => Promise<void>;
   saveAppearances: () => Promise<void>;
   saveOtb: () => Promise<void>;
+
+  pickAssetsDir: () => Promise<void>;
+  refreshAssetsDirInfo: () => Promise<void>;
+  fetchSpritePng: (spriteId: number) => Promise<string | null>;
 }
 
 async function pickFile(
@@ -91,6 +97,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   status: "idle",
   error: null,
   recent: emptyRecent,
+  assetsDir: null,
 
   setQuery: (query) => set({ query }),
   setCategory: (category) =>
@@ -261,6 +268,42 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ summary, error: null });
     } catch (e) {
       set({ error: String(e) });
+    }
+  },
+
+  async pickAssetsDir() {
+    const selected = await openDialog({
+      title: "Pick the Tibia client assets/ directory",
+      multiple: false,
+      directory: true,
+    });
+    if (!selected) return;
+    const path = Array.isArray(selected) ? selected[0] : selected;
+    if (!path) return;
+    try {
+      const info = await invoke<AssetsDirInfo>("set_assets_dir", { path });
+      set({ assetsDir: info, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async refreshAssetsDirInfo() {
+    try {
+      const info = await invoke<AssetsDirInfo | null>("get_assets_dir_info");
+      set({ assetsDir: info });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async fetchSpritePng(spriteId) {
+    try {
+      const dataUrl = await invoke<string | null>("get_sprite_png", { spriteId });
+      return dataUrl;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
     }
   },
 }));

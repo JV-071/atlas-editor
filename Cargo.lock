@@ -226,6 +226,8 @@ dependencies = [
  "atlas-otb",
  "atlas-sprites",
  "atlas-workspace",
+ "base64 0.22.1",
+ "image",
  "serde",
  "serde_json",
  "tauri",
@@ -264,6 +266,9 @@ dependencies = [
  "dashmap",
  "image",
  "lzma-rs",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "xz2",
 ]

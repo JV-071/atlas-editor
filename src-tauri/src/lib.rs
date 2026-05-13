@@ -45,6 +45,9 @@ pub fn run() {
             commands::redo,
             commands::save_appearances,
             commands::save_otb,
+            commands::set_assets_dir,
+            commands::get_assets_dir_info,
+            commands::get_sprite_png,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

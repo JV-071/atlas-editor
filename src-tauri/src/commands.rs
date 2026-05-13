@@ -11,7 +11,9 @@ use std::sync::Mutex;
 
 use atlas_appearances::{AppearanceInfo, Appearances};
 use atlas_otb::Otb;
+use atlas_sprites::Atlas;
 use atlas_workspace::Workspace;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
@@ -136,6 +138,10 @@ pub struct WorkspaceState {
     pub history: Vec<Workspace>,
     pub future: Vec<Workspace>,
     pub dirty: bool,
+    /// Loaded sprite atlas, set by `set_assets_dir`. Optional because
+    /// the editor is useful for attribute work even without sprites.
+    pub atlas: Option<Atlas>,
+    pub assets_dir: Option<PathBuf>,
 }
 
 impl WorkspaceState {
@@ -479,4 +485,90 @@ pub fn get_otb_item(
         return Ok(None);
     };
     Ok(otb.items.iter().find(|i| i.server_id == Some(server_id)).cloned())
+}
+
+/// Point the sprite atlas at the Tibia client's `assets/` directory
+/// (the one with `catalog-content.json`). Returns the number of sprite
+/// sheets discovered so the UI can confirm the directory was right.
+#[tauri::command]
+pub fn set_assets_dir(
+    path: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<AssetsDirInfo, String> {
+    let atlas = Atlas::from_assets_dir(&path).map_err(|e| e.to_string())?;
+    let info = AssetsDirInfo {
+        path: path.clone(),
+        sheet_count: atlas.catalog().sheets.len(),
+        sprite_id_range: atlas
+            .catalog()
+            .sheets
+            .first()
+            .map(|s| s.firstspriteid)
+            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid))
+            .map(|(lo, hi)| (lo, hi)),
+    };
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    guard.atlas = Some(atlas);
+    guard.assets_dir = Some(PathBuf::from(path));
+    Ok(info)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetsDirInfo {
+    pub path: String,
+    pub sheet_count: usize,
+    pub sprite_id_range: Option<(u32, u32)>,
+}
+
+#[tauri::command]
+pub fn get_assets_dir_info(
+    state: State<'_, SharedWorkspace>,
+) -> Result<Option<AssetsDirInfo>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let Some(atlas) = guard.atlas.as_ref() else {
+        return Ok(None);
+    };
+    Ok(Some(AssetsDirInfo {
+        path: guard
+            .assets_dir
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default(),
+        sheet_count: atlas.catalog().sheets.len(),
+        sprite_id_range: atlas
+            .catalog()
+            .sheets
+            .first()
+            .map(|s| s.firstspriteid)
+            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid))
+            .map(|(lo, hi)| (lo, hi)),
+    }))
+}
+
+/// Encode the requested sprite as a `data:image/png;base64,...` string
+/// so the frontend can drop it directly into an `<img src>`. Returns
+/// `None` when the assets dir is not set; returns an error when the
+/// sprite id cannot be located or the sheet fails to decode.
+#[tauri::command]
+pub fn get_sprite_png(
+    sprite_id: u32,
+    state: State<'_, SharedWorkspace>,
+) -> Result<Option<String>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let Some(atlas) = guard.atlas.as_ref() else {
+        return Ok(None);
+    };
+    let img = atlas.sprite(sprite_id).map_err(|e| e.to_string())?;
+    let mut buf = Vec::new();
+    image::ImageEncoder::write_image(
+        image::codecs::png::PngEncoder::new(&mut buf),
+        img.as_raw(),
+        img.width(),
+        img.height(),
+        image::ColorType::Rgba8.into(),
+    )
+    .map_err(|e| format!("png encode: {e}"))?;
+    let encoded = BASE64.encode(&buf);
+    Ok(Some(format!("data:image/png;base64,{encoded}")))
 }

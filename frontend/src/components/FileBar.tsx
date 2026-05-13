@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FileText,
   FolderOpen,
+  Image as ImageIcon,
   Redo2,
   Save,
   Undo2,
@@ -92,6 +93,8 @@ export function FileBar() {
   const redo = useWorkspace((s) => s.redo);
   const saveAppearances = useWorkspace((s) => s.saveAppearances);
   const saveOtb = useWorkspace((s) => s.saveOtb);
+  const pickAssetsDir = useWorkspace((s) => s.pickAssetsDir);
+  const assetsDir = useWorkspace((s) => s.assetsDir);
 
   const hasAnything = summary.appearancesPath || summary.otbPath;
 
@@ -155,6 +158,25 @@ export function FileBar() {
           <RecentMenu paths={recent.otb} onPick={openOtbPath} />
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => void pickAssetsDir()}
+        title={
+          assetsDir
+            ? `Sprite atlas: ${assetsDir.sheetCount} sheets`
+            : "Pick the Tibia client's assets/ directory"
+        }
+        className={cn(
+          "inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium transition-colors border",
+          assetsDir
+            ? "border-emerald-700 bg-emerald-700/10 text-emerald-900 hover:bg-emerald-700/20"
+            : "border-atlas-border bg-atlas-cream text-atlas-ink hover:bg-atlas-sand",
+        )}
+      >
+        <ImageIcon className="h-4 w-4" />
+        {assetsDir ? "Assets ✓" : "Open assets"}
+      </button>
 
       <div className="ml-3 flex-1 min-w-0 text-xs text-atlas-muted truncate">
         {summary.appearancesPath && (

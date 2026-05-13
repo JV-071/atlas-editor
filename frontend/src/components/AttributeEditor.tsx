@@ -15,6 +15,7 @@ import {
   type WeaponType,
 } from "../types";
 import { CATEGORY_META } from "./Tabs";
+import { SpritePreview } from "./SpritePreview";
 import { cn } from "../lib/utils";
 
 // ---- common controls ----
@@ -462,6 +463,13 @@ export function AttributeEditor() {
             {error}
           </div>
         )}
+
+        <section className="space-y-2">
+          <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold">
+            Sprites
+          </h3>
+          <SpritePreview spriteIds={appearance.spriteIds} />
+        </section>
 
         <AppearanceSection appearance={appearance} />
 

@@ -10,6 +10,7 @@ export default function App() {
   const summary = useWorkspace((s) => s.summary);
   const refreshRows = useWorkspace((s) => s.refreshRows);
   const refreshRecent = useWorkspace((s) => s.refreshRecent);
+  const refreshAssetsDirInfo = useWorkspace((s) => s.refreshAssetsDirInfo);
 
   // On reload during `tauri dev`, the backend retains its state — refresh
   // the row cache + recent_files so the UI matches whatever is still in
@@ -17,7 +18,8 @@ export default function App() {
   useEffect(() => {
     void refreshRows();
     void refreshRecent();
-  }, [refreshRows, refreshRecent]);
+    void refreshAssetsDirInfo();
+  }, [refreshRows, refreshRecent, refreshAssetsDirInfo]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-atlas-cream text-atlas-ink">
