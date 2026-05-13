@@ -1,6 +1,27 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
+
+// True when the page is loaded inside the Tauri webview (which injects
+// `__TAURI_INTERNALS__` on `window`). Calling `tauriInvoke` outside of
+// that context throws "Cannot read properties of undefined (reading
+// 'invoke')", which used to bring down the whole React tree. We treat
+// missing-runtime as a soft failure instead so the layout is still
+// usable in a regular browser tab for styling work.
+const HAS_TAURI =
+  typeof window !== "undefined" &&
+  // The internals object lives at this exact key in Tauri 2.
+  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined;
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!HAS_TAURI) {
+    throw new Error(
+      `Tauri IPC is not available — this page is loaded outside the Tauri webview ` +
+        `(probably plain Vite at localhost:5173). Open the desktop window via 'cargo tauri dev'.`,
+    );
+  }
+  return tauriInvoke<T>(cmd, args);
+}
 
 import {
   CATEGORIES,

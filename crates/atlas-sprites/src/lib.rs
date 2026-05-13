@@ -17,9 +17,13 @@
 //! ## Caveats
 //!
 //! - The exact sheet header layout has shifted across client versions.
-//!   This crate assumes the modern (≥12) Tibia layout: a fixed 32-byte
-//!   header skipped after LZMA decompression, then raw BGRA pixel data
-//!   (no BMP wrapper). If your client uses BMP-wrapped sheets, set
+//!   This crate assumes the modern (≥12) Tibia layout:
+//!   - Bytes 0..32: Cipsoft custom header (signature/checksum), skipped.
+//!   - Bytes 32..: LZMA1 stream. The uncompressed-size field inside the
+//!     LZMA header is bogus on Tibia sheets, so we tell `lzma-rs` to
+//!     ignore it and read until the end of the stream.
+//!   - Decompressed output is raw BGRA pixel data for a 384×384 sheet.
+//!   If your client uses BMP-wrapped sheets, set
 //!   `Atlas::with_bmp_wrap(true)`.
 //! - The crate is **read-only** for now. Writing new sprite sheets is a
 //!   Phase 7 concern and will live in a separate module.
@@ -277,38 +281,49 @@ impl Atlas {
             path: path.clone(),
             source: e,
         })?;
+
+        // Tibia 12+ layout: 32 bytes of Cipsoft custom header (signature
+        // + checksum) followed by an LZMA1 stream. The LZMA header's
+        // uncompressed-size field is zeroed out on Tibia sheets, so we
+        // tell `lzma-rs` to ignore it and read until the end of the
+        // stream — otherwise it stops immediately and produces 0 bytes.
+        if raw.len() < SHEET_HEADER_LEN {
+            return Err(SpriteError::SheetTooSmall {
+                path,
+                actual: raw.len(),
+                expected: SHEET_HEADER_LEN,
+            });
+        }
         let mut decoded = Vec::new();
-        let mut reader = std::io::Cursor::new(&raw);
-        lzma_rs::lzma_decompress(&mut reader, &mut decoded).map_err(|e| SpriteError::Lzma {
-            path: path.clone(),
-            source: e,
-        })?;
+        let mut reader = std::io::Cursor::new(&raw[SHEET_HEADER_LEN..]);
+        let options = lzma_rs::decompress::Options {
+            unpacked_size: lzma_rs::decompress::UnpackedSize::ReadHeaderButUseProvided(None),
+            ..Default::default()
+        };
+        lzma_rs::lzma_decompress_with_options(&mut reader, &mut decoded, &options).map_err(
+            |e| SpriteError::Lzma {
+                path: path.clone(),
+                source: e,
+            },
+        )?;
 
         let image = if self.bmp_wrap {
             image::load_from_memory_with_format(&decoded, image::ImageFormat::Bmp)
                 .map_err(|e| SpriteError::Catalog(format!("BMP decode for {path:?}: {e}")))?
                 .to_rgba8()
         } else {
-            if decoded.len() < SHEET_HEADER_LEN {
+            let expected = (SHEET_SIDE as usize) * (SHEET_SIDE as usize) * BYTES_PER_PIXEL;
+            if decoded.len() < expected {
                 return Err(SpriteError::SheetTooSmall {
                     path,
                     actual: decoded.len(),
-                    expected: SHEET_HEADER_LEN,
-                });
-            }
-            let pixels = &decoded[SHEET_HEADER_LEN..];
-            let expected = (SHEET_SIDE as usize) * (SHEET_SIDE as usize) * BYTES_PER_PIXEL;
-            if pixels.len() < expected {
-                return Err(SpriteError::SheetTooSmall {
-                    path,
-                    actual: pixels.len(),
                     expected,
                 });
             }
             // The on-disk pixel order is BGRA; image's RgbaImage wants
-            // RGBA. Swap channels in-place during the copy.
+            // RGBA. Swap channels during the copy.
             let mut rgba = Vec::with_capacity(expected);
-            for chunk in pixels[..expected].chunks_exact(4) {
+            for chunk in decoded[..expected].chunks_exact(4) {
                 rgba.extend_from_slice(&[chunk[2], chunk[1], chunk[0], chunk[3]]);
             }
             RgbaImage::from_raw(SHEET_SIDE, SHEET_SIDE, rgba).expect("pre-validated buffer dims")
