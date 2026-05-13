@@ -51,6 +51,27 @@ Outputs platform installers under `src-tauri/target/release/bundle/`.
 - Rust: `cargo test --workspace`.
 - Frontend: there are no UI tests in the Phase 0 bootstrap yet.
 
+## Releases
+
+Releases are built by GitHub Actions on tag push. To cut a release:
+
+```bash
+# Bump version in src-tauri/tauri.conf.json + Cargo.toml first.
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The `.github/workflows/release.yml` workflow builds Windows, macOS
+(universal), and Linux installers in parallel via
+[`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action),
+attaches them to a draft GitHub Release, and promotes it to published
+once every job succeeds. Manual dispatch with a `version` input also
+works for re-running a release without re-tagging.
+
+Builds are unsigned by default. If/when code signing is set up, add the
+secrets the action documents (`APPLE_CERTIFICATE`, `TAURI_PRIVATE_KEY`,
+etc.) and pass them through `env:` in the release workflow.
+
 ## License
 
 By contributing, you agree your contributions will be licensed under the
