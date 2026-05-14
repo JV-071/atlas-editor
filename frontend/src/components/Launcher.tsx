@@ -173,12 +173,14 @@ export function Launcher() {
   return (
     <main className="h-screen w-screen flex flex-col items-center bg-atlas-cream text-atlas-ink p-5 overflow-y-auto">
       <header className="mb-5 flex flex-col items-center shrink-0">
-        <img
-          src={logoUrl}
-          alt="Atlas"
-          className="h-16 w-16 object-contain mb-2 select-none"
-          draggable={false}
-        />
+        <div className="mb-3 rounded-2xl border border-atlas-border bg-atlas-paper p-3 shadow-sm ring-1 ring-atlas-ink/5">
+          <img
+            src={logoUrl}
+            alt="Atlas"
+            className="h-14 w-14 object-contain select-none"
+            draggable={false}
+          />
+        </div>
         <h1 className="text-xl font-bold tracking-tight">Atlas Assets Editor</h1>
         <p className="text-[11px] text-atlas-muted mt-0.5">
           Tibia 12+/15.x · appearances.dat ⇄ items.otb
