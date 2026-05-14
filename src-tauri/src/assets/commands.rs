@@ -18,7 +18,6 @@ use atlas_appearances::{AppearanceInfo, Appearances};
 use atlas_otb::Otb;
 use atlas_sprites::{Atlas, PixelFormat, SheetInspection, SpriteDims};
 use atlas_workspace::Workspace;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
@@ -897,6 +896,11 @@ pub fn get_sprite_pixel_format(
 /// so the frontend can drop it directly into an `<img src>`. Returns
 /// `None` when the assets dir is not set; returns an error when the
 /// sprite id cannot be located or the sheet fails to decode.
+///
+/// The Atlas keeps a PNG cache keyed by sprite_id, so the second
+/// (and every subsequent) request for the same id is a DashMap
+/// lookup — that's what keeps the Sprites grid responsive while
+/// the user scrolls.
 #[tauri::command]
 pub fn get_sprite_png(
     sprite_id: u32,
@@ -906,16 +910,6 @@ pub fn get_sprite_png(
     let Some(atlas) = guard.atlas.as_ref() else {
         return Ok(None);
     };
-    let img = atlas.sprite(sprite_id).map_err(|e| e.to_string())?;
-    let mut buf = Vec::new();
-    image::ImageEncoder::write_image(
-        image::codecs::png::PngEncoder::new(&mut buf),
-        img.as_raw(),
-        img.width(),
-        img.height(),
-        image::ColorType::Rgba8.into(),
-    )
-    .map_err(|e| format!("png encode: {e}"))?;
-    let encoded = BASE64.encode(&buf);
-    Ok(Some(format!("data:image/png;base64,{encoded}")))
+    let url = atlas.sprite_data_url(sprite_id).map_err(|e| e.to_string())?;
+    Ok(Some((*url).clone()))
 }

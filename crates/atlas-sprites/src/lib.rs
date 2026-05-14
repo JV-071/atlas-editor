@@ -32,6 +32,7 @@
 
 use std::path::{Path, PathBuf};
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dashmap::DashMap;
 use image::RgbaImage;
 use serde::Deserialize;
@@ -291,14 +292,27 @@ impl Catalog {
     }
 }
 
-/// Caching sprite atlas. Wraps a `Catalog` plus a lock-free cache of
-/// fully decoded sheet images. Decoded sheets are kept in memory until
-/// the `Atlas` is dropped — for editor use cases this is fine since
-/// the user opens one client tree at a time.
+/// Caching sprite atlas. Wraps a `Catalog` plus two lock-free caches:
+///
+/// - `sheet_cache` keeps fully decoded sheet images, so cropping
+///   tile N+1 out of the same sheet is just a pixel copy.
+/// - `png_cache` keeps the encoded `data:image/png;base64,…` string
+///   per sprite id, so re-visiting a tile (which happens constantly
+///   while the user scrolls the Sprites grid) skips the PNG encode
+///   + base64 round-trip entirely.
+///
+/// Both caches are kept until the `Atlas` is dropped — for editor
+/// use cases this is fine since the user opens one client tree at a
+/// time. A real Tibia catalog has ~100k sprites; assuming ~1.5 KB per
+/// data URL on average, the PNG cache tops out around 150 MB worst
+/// case (only the sprites the user actually scrolled past). That's
+/// acceptable for a desktop editor.
 pub struct Atlas {
     catalog: Catalog,
     /// Cache of decoded sheets keyed by file name relative to `assets_dir`.
-    cache: DashMap<String, std::sync::Arc<RgbaImage>>,
+    sheet_cache: DashMap<String, std::sync::Arc<RgbaImage>>,
+    /// Cache of encoded PNG data URLs keyed by sprite id.
+    png_cache: DashMap<u32, std::sync::Arc<String>>,
     /// Some client builds wrap each sheet in a BMP container after
     /// LZMA decompression; others write raw BGRA. Default is `false`
     /// (raw BGRA after a 32-byte header) which matches the modern
@@ -313,7 +327,8 @@ impl Atlas {
     pub fn new(catalog: Catalog) -> Self {
         Self {
             catalog,
-            cache: DashMap::new(),
+            sheet_cache: DashMap::new(),
+            png_cache: DashMap::new(),
             bmp_wrap: false,
             pixel_format: PixelFormat::default(),
         }
@@ -331,14 +346,17 @@ impl Atlas {
 
     pub fn with_pixel_format(mut self, pf: PixelFormat) -> Self {
         self.pixel_format = pf;
-        self.cache.clear();
+        // Changing the channel order invalidates every cached byte.
+        self.sheet_cache.clear();
+        self.png_cache.clear();
         self
     }
 
     pub fn set_pixel_format(&mut self, pf: PixelFormat) {
         if self.pixel_format != pf {
             self.pixel_format = pf;
-            self.cache.clear();
+            self.sheet_cache.clear();
+            self.png_cache.clear();
         }
     }
 
@@ -396,6 +414,33 @@ impl Atlas {
         })
     }
 
+    /// Encode the requested sprite as a `data:image/png;base64,…`
+    /// string ready to drop into an `<img src>`. The full pipeline
+    /// (sheet load + crop + PNG encode + base64) is cached per sprite
+    /// id; repeat calls return the cached `Arc<String>` in O(1).
+    ///
+    /// The Sprites grid relies on this — scrolling fast across 100k
+    /// tiles would otherwise PNG-encode each one over and over.
+    pub fn sprite_data_url(&self, sprite_id: u32) -> Result<std::sync::Arc<String>> {
+        if let Some(hit) = self.png_cache.get(&sprite_id) {
+            return Ok(hit.clone());
+        }
+        let img = self.sprite(sprite_id)?;
+        let mut buf = Vec::new();
+        image::ImageEncoder::write_image(
+            image::codecs::png::PngEncoder::new(&mut buf),
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            image::ColorType::Rgba8.into(),
+        )
+        .map_err(|e| SpriteError::Catalog(format!("png encode for sprite {sprite_id}: {e}")))?;
+        let encoded = BASE64.encode(&buf);
+        let url = std::sync::Arc::new(format!("data:image/png;base64,{encoded}"));
+        self.png_cache.insert(sprite_id, url.clone());
+        Ok(url)
+    }
+
     /// Return the RGBA-decoded sprite tile for `sprite_id`. Errors if
     /// no sheet covers the id, or if the sheet fails to decompress.
     pub fn sprite(&self, sprite_id: u32) -> Result<RgbaImage> {
@@ -423,7 +468,7 @@ impl Atlas {
     }
 
     fn load_sheet(&self, file: &str) -> Result<std::sync::Arc<RgbaImage>> {
-        if let Some(hit) = self.cache.get(file) {
+        if let Some(hit) = self.sheet_cache.get(file) {
             return Ok(hit.clone());
         }
         let path = self.catalog.assets_dir.join(file);
@@ -488,7 +533,7 @@ impl Atlas {
         };
 
         let arc = std::sync::Arc::new(image);
-        self.cache.insert(file.to_string(), arc.clone());
+        self.sheet_cache.insert(file.to_string(), arc.clone());
         Ok(arc)
     }
 }

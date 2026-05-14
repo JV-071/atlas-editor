@@ -226,8 +226,6 @@ dependencies = [
  "atlas-otb",
  "atlas-sprites",
  "atlas-workspace",
- "base64 0.22.1",
- "image",
  "serde",
  "serde_json",
  "tauri",
@@ -263,6 +261,7 @@ name = "atlas-sprites"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "base64 0.22.1",
  "dashmap",
  "image",
  "lzma-rs",

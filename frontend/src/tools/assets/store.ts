@@ -2,6 +2,8 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 
+import { clearSpriteUrlCache } from "./SpriteGrid";
+
 // True when the page is loaded inside the Tauri webview (which injects
 // `__TAURI_INTERNALS__` on `window`). Calling `tauriInvoke` outside of
 // that context throws "Cannot read properties of undefined (reading
@@ -180,6 +182,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   async openAssetsBundlePath(path) {
     set({ status: "loading", error: null });
+    // New bundle => sprite_ids may now point at different pixels.
+    // Discard the module-level URL cache so the grid refetches.
+    clearSpriteUrlCache();
     try {
       const result = await invoke<AssetsBundleResult>("open_assets_bundle", { path });
       set({
@@ -329,6 +334,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const applied = await invoke<PixelFormat>("set_sprite_pixel_format", {
         format: next,
       });
+      // Channel order changed => every cached sprite is now wrong.
+      clearSpriteUrlCache();
       set({ pixelFormat: applied, spriteCacheBust: get().spriteCacheBust + 1 });
     } catch (e) {
       set({ error: String(e) });
