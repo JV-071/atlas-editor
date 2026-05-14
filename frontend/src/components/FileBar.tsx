@@ -1,14 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  FileText,
-  Home,
-  MoreHorizontal,
-  Redo2,
-  Save,
-  Undo2,
-  X,
-} from "lucide-react";
+import { Home, MoreHorizontal, Redo2, Save, Undo2, X } from "lucide-react";
 
 import logoUrl from "../assets/logo.png";
 import { useWorkspace } from "../stores/workspace";
@@ -19,62 +10,6 @@ function basename(path: string | null): string | null {
   const cleaned = path.replace(/\\/g, "/");
   const idx = cleaned.lastIndexOf("/");
   return idx === -1 ? cleaned : cleaned.slice(idx + 1);
-}
-
-interface RecentMenuProps {
-  paths: string[];
-  onPick: (path: string) => void;
-}
-
-function RecentMenu({ paths, onPick }: RecentMenuProps) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  if (paths.length === 0) return null;
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        title="Recent files"
-        className="h-full inline-flex items-center px-1.5 transition-colors text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
-      >
-        <ChevronDown className="h-3.5 w-3.5" />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 w-[420px] max-w-[80vw] z-10 rounded border border-atlas-border bg-atlas-paper shadow-lg">
-          <ul className="py-1 max-h-72 overflow-auto">
-            {paths.map((p) => (
-              <li key={p}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onPick(p);
-                  }}
-                  title={p}
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-atlas-sand truncate flex items-baseline gap-2"
-                >
-                  <span className="text-atlas-ink shrink-0">{basename(p)}</span>
-                  <span className="text-xs text-atlas-muted truncate">{p}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
 }
 
 /// Last-resort knobs that don't deserve real estate on the toolbar.
@@ -135,9 +70,6 @@ export function FileBar() {
   const summary = useWorkspace((s) => s.summary);
   const status = useWorkspace((s) => s.status);
   const error = useWorkspace((s) => s.error);
-  const recent = useWorkspace((s) => s.recent);
-  const openOtbPicker = useWorkspace((s) => s.openOtbPicker);
-  const openOtbPath = useWorkspace((s) => s.openOtbPath);
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
   const undo = useWorkspace((s) => s.undo);
   const redo = useWorkspace((s) => s.redo);
@@ -184,27 +116,6 @@ export function FileBar() {
         />
         <Home className="h-3.5 w-3.5" />
       </button>
-
-      {!summary.otbPath && (
-        <div className="inline-flex rounded overflow-hidden border border-atlas-border">
-          <button
-            type="button"
-            onClick={openOtbPicker}
-            disabled={status === "loading"}
-            className={cn(
-              "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
-              "bg-atlas-cream text-atlas-ink hover:bg-atlas-sand",
-              "disabled:bg-atlas-sand disabled:text-atlas-muted disabled:cursor-not-allowed",
-            )}
-          >
-            <FileText className="h-4 w-4" />
-            Open items.otb
-          </button>
-          <div className="border-l border-atlas-border bg-atlas-cream">
-            <RecentMenu paths={recent.otb} onPick={openOtbPath} />
-          </div>
-        </div>
-      )}
 
       <div className="flex-1 min-w-0 text-xs text-atlas-muted truncate">
         {summary.appearancesPath && (
