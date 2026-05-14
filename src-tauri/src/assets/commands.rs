@@ -632,6 +632,50 @@ pub struct SpriteRangeDto {
     pub sheet_file: String,
 }
 
+/// Diagnostic: read the raw `catalog-content.json` next to the current
+/// assets dir and return:
+/// - the first ~5 distinct `type` values present in the file
+/// - the first entry of each type (so we can see the field shape)
+/// - the total entry count
+/// Used to debug parser mismatches when a client ships a catalog
+/// schema we don't recognise (e.g. `"type": "appearance"` singular
+/// instead of `"appearances"`).
+#[tauri::command]
+pub fn inspect_catalog(
+    state: State<'_, SharedWorkspace>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let dir = guard
+        .assets_dir
+        .as_ref()
+        .ok_or("assets dir not set")?
+        .clone();
+    drop(guard); // release the lock while we hit the disk
+    let path = dir.join("catalog-content.json");
+    let bytes = std::fs::read(&path).map_err(|e| format!("read {path:?}: {e}"))?;
+    let entries: Vec<serde_json::Value> =
+        serde_json::from_slice(&bytes).map_err(|e| format!("parse: {e}"))?;
+    let total = entries.len();
+    let mut by_type: std::collections::BTreeMap<String, serde_json::Value> =
+        std::collections::BTreeMap::new();
+    for entry in &entries {
+        if let Some(t) = entry.get("type").and_then(|v| v.as_str()) {
+            by_type.entry(t.to_string()).or_insert_with(|| entry.clone());
+        } else {
+            by_type
+                .entry("(missing type)".into())
+                .or_insert_with(|| entry.clone());
+        }
+        if by_type.len() >= 10 {
+            break;
+        }
+    }
+    Ok(serde_json::json!({
+        "totalEntries": total,
+        "firstByType": by_type,
+    }))
+}
+
 #[tauri::command]
 pub fn list_sprite_ranges(
     state: State<'_, SharedWorkspace>,

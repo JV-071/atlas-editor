@@ -51,6 +51,7 @@ pub fn run() {
             assets::commands::list_appearances,
             assets::commands::list_otb_items,
             assets::commands::list_sprite_ranges,
+            assets::commands::inspect_catalog,
             assets::commands::get_appearance,
             assets::commands::get_otb_item,
             assets::commands::update_appearance_field,
