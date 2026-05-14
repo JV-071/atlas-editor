@@ -73,37 +73,41 @@ export function SpritePreview({ spriteIds }: Props) {
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-3">
       {spriteIds.map((id, i) => {
         const url = images[i];
         return (
           <div
             key={`${id}-${i}`}
-            className={cn(
-              "relative w-16 h-16 rounded border border-atlas-border bg-atlas-paper flex items-center justify-center overflow-hidden group",
-              loading && !url && "animate-pulse",
-            )}
-            title={`sprite ${id}`}
+            className="flex flex-col items-center gap-1"
+            title={`sprite_id ${id}`}
           >
-            {url ? (
-              <img
-                src={url}
-                alt={`sprite ${id}`}
-                className="max-w-full max-h-full"
-                style={{ imageRendering: "pixelated" }}
-              />
-            ) : (
-              <ImageOff className="h-5 w-5 text-atlas-muted/60" />
-            )}
-            <button
-              type="button"
-              onClick={() => void inspect(id)}
-              title="Inspect sheet bytes"
-              className="absolute top-0.5 left-0.5 p-0.5 rounded bg-atlas-paper/80 text-atlas-muted opacity-0 group-hover:opacity-100 hover:text-atlas-ink"
+            <div
+              className={cn(
+                "relative w-16 h-16 rounded border border-atlas-border bg-atlas-paper flex items-center justify-center overflow-hidden group",
+                loading && !url && "animate-pulse",
+              )}
             >
-              <Search className="h-3 w-3" />
-            </button>
-            <span className="absolute bottom-0.5 right-1 text-[9px] text-atlas-muted font-mono bg-atlas-paper/80 px-1 rounded">
+              {url ? (
+                <img
+                  src={url}
+                  alt={`sprite ${id}`}
+                  className="max-w-full max-h-full"
+                  style={{ imageRendering: "pixelated" }}
+                />
+              ) : (
+                <ImageOff className="h-5 w-5 text-atlas-muted/60" />
+              )}
+              <button
+                type="button"
+                onClick={() => void inspect(id)}
+                title="Inspect sheet bytes"
+                className="absolute top-0.5 left-0.5 p-0.5 rounded bg-atlas-paper/80 text-atlas-muted opacity-0 group-hover:opacity-100 hover:text-atlas-ink"
+              >
+                <Search className="h-3 w-3" />
+              </button>
+            </div>
+            <span className="text-[10px] text-atlas-muted font-mono tabular-nums">
               {id}
             </span>
           </div>
