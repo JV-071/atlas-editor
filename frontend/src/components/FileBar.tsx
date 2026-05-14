@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   FileText,
-  FolderOpen,
   Home,
-  Image as ImageIcon,
+  MoreHorizontal,
   Redo2,
   Save,
   Undo2,
@@ -48,10 +47,7 @@ function RecentMenu({ paths, onPick }: RecentMenuProps) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         title="Recent files"
-        className={cn(
-          "h-full inline-flex items-center px-1.5 transition-colors",
-          "text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand",
-        )}
+        className="h-full inline-flex items-center px-1.5 transition-colors text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
       >
         <ChevronDown className="h-3.5 w-3.5" />
       </button>
@@ -81,24 +77,72 @@ function RecentMenu({ paths, onPick }: RecentMenuProps) {
   );
 }
 
+/// Last-resort knobs that don't deserve real estate on the toolbar.
+/// Today this is just the pixel-format cycler (the BMP-wrap auto-detect
+/// handles every known client format, but a future Cipsoft refresh
+/// could break that and we'd want a quick override).
+function OverflowMenu() {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const assetsDir = useWorkspace((s) => s.assetsDir);
+  const pixelFormat = useWorkspace((s) => s.pixelFormat);
+  const cyclePixelFormat = useWorkspace((s) => s.cyclePixelFormat);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  if (!assetsDir) return null;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="More"
+        className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-64 z-10 rounded border border-atlas-border bg-atlas-paper shadow-lg p-2 text-sm">
+          <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-atlas-muted font-semibold">
+            Debug
+          </div>
+          <button
+            type="button"
+            onClick={() => void cyclePixelFormat()}
+            title="Cycle on-disk pixel format (only needed if sprites render with wrong colors)"
+            className="w-full flex items-center justify-between rounded px-2 py-1.5 hover:bg-atlas-sand"
+          >
+            <span className="text-atlas-ink-soft">Sprite pixel format</span>
+            <span className="font-mono text-xs uppercase tracking-wider tabular-nums text-atlas-muted">
+              {pixelFormat}
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FileBar() {
   const summary = useWorkspace((s) => s.summary);
   const status = useWorkspace((s) => s.status);
   const error = useWorkspace((s) => s.error);
   const recent = useWorkspace((s) => s.recent);
-  const openAppearancesPicker = useWorkspace((s) => s.openAppearancesPicker);
   const openOtbPicker = useWorkspace((s) => s.openOtbPicker);
-  const openAppearancesPath = useWorkspace((s) => s.openAppearancesPath);
   const openOtbPath = useWorkspace((s) => s.openOtbPath);
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
   const undo = useWorkspace((s) => s.undo);
   const redo = useWorkspace((s) => s.redo);
   const saveAppearances = useWorkspace((s) => s.saveAppearances);
   const saveOtb = useWorkspace((s) => s.saveOtb);
-  const pickAssetsDir = useWorkspace((s) => s.pickAssetsDir);
-  const assetsDir = useWorkspace((s) => s.assetsDir);
-  const pixelFormat = useWorkspace((s) => s.pixelFormat);
-  const cyclePixelFormat = useWorkspace((s) => s.cyclePixelFormat);
   const goToLauncher = useWorkspace((s) => s.goToLauncher);
 
   const hasAnything = summary.appearancesPath || summary.otbPath;
@@ -125,7 +169,7 @@ export function FileBar() {
   }, [undo, redo, saveAppearances, saveOtb, summary.appearancesPath, summary.otbPath]);
 
   return (
-    <header className="border-b border-atlas-border bg-atlas-paper px-4 py-3 flex items-center gap-3">
+    <header className="border-b border-atlas-border bg-atlas-paper px-4 py-2 flex items-center gap-3">
       <button
         type="button"
         onClick={() => void goToLauncher()}
@@ -141,92 +185,43 @@ export function FileBar() {
         <Home className="h-3.5 w-3.5" />
       </button>
 
-      <div className="inline-flex rounded overflow-hidden">
-        <button
-          type="button"
-          onClick={openAppearancesPicker}
-          disabled={status === "loading"}
-          className={cn(
-            "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
-            "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink-soft",
-            "disabled:bg-atlas-sand disabled:text-atlas-muted disabled:cursor-not-allowed",
-          )}
-        >
-          <FolderOpen className="h-4 w-4" />
-          Open appearances.dat
-        </button>
-        <div className="bg-atlas-ink hover:bg-atlas-ink-soft text-atlas-cream border-l border-atlas-cream/20">
-          <RecentMenu paths={recent.appearances} onPick={openAppearancesPath} />
+      {!summary.otbPath && (
+        <div className="inline-flex rounded overflow-hidden border border-atlas-border">
+          <button
+            type="button"
+            onClick={openOtbPicker}
+            disabled={status === "loading"}
+            className={cn(
+              "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
+              "bg-atlas-cream text-atlas-ink hover:bg-atlas-sand",
+              "disabled:bg-atlas-sand disabled:text-atlas-muted disabled:cursor-not-allowed",
+            )}
+          >
+            <FileText className="h-4 w-4" />
+            Open items.otb
+          </button>
+          <div className="border-l border-atlas-border bg-atlas-cream">
+            <RecentMenu paths={recent.otb} onPick={openOtbPath} />
+          </div>
         </div>
-      </div>
-
-      <div className="inline-flex rounded overflow-hidden border border-atlas-border">
-        <button
-          type="button"
-          onClick={openOtbPicker}
-          disabled={status === "loading"}
-          className={cn(
-            "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
-            "bg-atlas-cream text-atlas-ink hover:bg-atlas-sand",
-            "disabled:bg-atlas-sand disabled:text-atlas-muted disabled:cursor-not-allowed",
-          )}
-        >
-          <FileText className="h-4 w-4" />
-          Open items.otb
-        </button>
-        <div className="border-l border-atlas-border bg-atlas-cream">
-          <RecentMenu paths={recent.otb} onPick={openOtbPath} />
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => void pickAssetsDir()}
-        title={
-          assetsDir
-            ? `Sprite atlas: ${assetsDir.sheetCount} sheets`
-            : "Pick the Tibia client's assets/ directory"
-        }
-        className={cn(
-          "inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium transition-colors border",
-          assetsDir
-            ? "border-emerald-700 bg-emerald-700/10 text-emerald-900 hover:bg-emerald-700/20"
-            : "border-atlas-border bg-atlas-cream text-atlas-ink hover:bg-atlas-sand",
-        )}
-      >
-        <ImageIcon className="h-4 w-4" />
-        {assetsDir ? "Assets ✓" : "Open assets"}
-      </button>
-
-      {assetsDir && (
-        <button
-          type="button"
-          onClick={() => void cyclePixelFormat()}
-          title="Cycle on-disk pixel format (click until colors look right)"
-          className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium border border-atlas-border bg-atlas-cream text-atlas-ink-soft hover:bg-atlas-sand uppercase tracking-wider tabular-nums"
-        >
-          {pixelFormat}
-        </button>
       )}
 
-      <div className="ml-3 flex-1 min-w-0 text-xs text-atlas-muted truncate">
+      <div className="flex-1 min-w-0 text-xs text-atlas-muted truncate">
         {summary.appearancesPath && (
           <span title={summary.appearancesPath}>
-            <span className="text-atlas-muted">appearances:</span>{" "}
             <span className="text-atlas-ink">{basename(summary.appearancesPath)}</span>{" "}
-            <span className="text-atlas-muted">({summary.objectCount} objects)</span>
+            <span className="text-atlas-muted">· {summary.objectCount.toLocaleString()} objects</span>
           </span>
         )}
         {summary.appearancesPath && summary.otbPath && <span className="mx-2">·</span>}
         {summary.otbPath && (
           <span title={summary.otbPath}>
-            <span className="text-atlas-muted">otb:</span>{" "}
             <span className="text-atlas-ink">{basename(summary.otbPath)}</span>{" "}
-            <span className="text-atlas-muted">({summary.otbItemCount} items)</span>
+            <span className="text-atlas-muted">· {summary.otbItemCount.toLocaleString()} items</span>
           </span>
         )}
-        {status === "loading" && <span className="text-amber-700">loading…</span>}
-        {error && <span className="text-rose-700">{error}</span>}
+        {status === "loading" && <span className="text-amber-700 ml-2">loading…</span>}
+        {error && <span className="text-rose-700 ml-2">{error}</span>}
       </div>
 
       <div className="flex items-center gap-1">
@@ -281,6 +276,8 @@ export function FileBar() {
             .otb
           </button>
         )}
+
+        <OverflowMenu />
 
         {hasAnything && (
           <button
