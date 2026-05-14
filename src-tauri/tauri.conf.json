@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Atlas Assets Editor",
+  "productName": "Atlas Editor",
   "version": "0.1.0",
-  "identifier": "dev.atlaskit.assets-editor",
+  "identifier": "dev.atlaskit.editor",
   "build": {
     "beforeDevCommand": "npm --prefix ../frontend run dev",
     "beforeBuildCommand": "npm --prefix ../frontend run build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Atlas Assets Editor",
+        "title": "Atlas Editor",
         "width": 640,
         "height": 480,
         "minWidth": 480,
@@ -37,7 +37,7 @@
       "icons/icon.ico"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "Tibia 15.x assets editor",
-    "longDescription": "Atlas Assets Editor bridges legacy OTB and modern appearances.dat into a single workspace for Tibia 15.x."
+    "shortDescription": "Tibia 15.x asset suite",
+    "longDescription": "Atlas Editor bundles three tools for Tibia 12+/15.x: an assets editor, a map editor (coming soon), and a converter from legacy items.otb plus client files into modern assets bundles."
   }
 }

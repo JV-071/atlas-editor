@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Home, MoreHorizontal, Redo2, Save, Undo2, X } from "lucide-react";
 
-import logoUrl from "../assets/logo.png";
-import { useWorkspace } from "../stores/workspace";
-import { cn } from "../lib/utils";
+import logoUrl from "../../shared/logo.png";
+import { useWorkspace } from "./store";
+import { cn } from "../../shared/utils";
 
 function basename(path: string | null): string | null {
   if (!path) return null;

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useWorkspace } from "../stores/workspace";
+import { useWorkspace } from "./store";
 import {
   ITEM_GROUPS,
   VOCATIONS,
@@ -13,10 +13,10 @@ import {
   type OtbItemFlagsDto,
   type Vocation,
   type WeaponType,
-} from "../types";
+} from "./types";
 import { CATEGORY_META } from "./Tabs";
 import { SpritePreview } from "./SpritePreview";
-import { cn } from "../lib/utils";
+import { cn } from "../../shared/utils";
 
 // ---- common controls ----
 

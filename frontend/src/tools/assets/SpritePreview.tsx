@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ImageOff, Search } from "lucide-react";
 
-import { useWorkspace } from "../stores/workspace";
-import { cn } from "../lib/utils";
+import { useWorkspace } from "./store";
+import { cn } from "../../shared/utils";
 
 interface Props {
   spriteIds: number[];

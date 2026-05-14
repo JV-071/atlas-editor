@@ -1,38 +1,49 @@
-# Atlas Assets Editor
+# Atlas Editor
 
-> Atlas Assets Editor bridges legacy OTB and modern `appearances.dat` into a
-> single workspace for Tibia 15.x — built with Rust and Tauri 2 for Windows,
-> macOS, and Linux. Edit items, sprites, outfits, and effects with full
-> attribute control, and seamlessly mirror modern client features like
-> imbuements, gems, and vocation restrictions.
+> A desktop suite of three Tibia 12+/15.x asset tools, bundled into a
+> single Tauri 2 app for Windows, macOS, and Linux:
+>
+> - **Assets Editor** — browse and edit a modern client assets bundle
+>   (`appearances.dat` + sprite sheets) and the optional `items.otb`
+>   server catalog, with undo/redo + cross-reference badges.
+> - **OTB Converter** — turn a legacy server bundle (`items.otb` plus
+>   Tibia 7.x–10.x `.dat`/`.spr`) into a modern Tibia 12+ assets folder.
+> - **Map Editor** — coming soon.
 
-[![CI](https://github.com/atlas-kit/atlas-assets-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/atlas-kit/atlas-assets-editor/actions/workflows/ci.yml)
+[![CI](https://github.com/atlas-kit/atlas-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/atlas-kit/atlas-editor/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-phase_6-blue.svg)](docs/architecture.md)
 
 ## What it is
 
-A desktop editor for Tibia 12+/15.x game assets. Unlike existing tools
-that focus on either `appearances.dat` *or* `items.otb`, Atlas Assets
-Editor treats them as two views of the same catalog and keeps them in
-sync — including modern client features that the classic OTB format
-never had (imbuements, gems, vocation restrictions, weapon type, …).
+A desktop launcher with three sibling tools that share the same Rust
+core (`atlas-appearances`, `atlas-otb`, `atlas-sprites`, etc.) and
+the same React+Tailwind UI shell.
 
-The format extensions are open and specified in
+- The **Assets Editor** treats `appearances.dat` and `items.otb` as
+  two views of the same catalog, keeping them in sync — including
+  modern client features the classic OTB format never had (imbuements,
+  gems, vocation restrictions, weapon type, …).
+- The **OTB Converter** takes a server bundle from an older client
+  and emits a fresh assets folder targeting Tibia 12+/15.x.
+- The **Map Editor** will eventually load `.otbm` worlds.
+
+The OTB format extensions are open and specified in
 [`docs/otb-format.md`](docs/otb-format.md), so any server can adopt them.
 
 ## Status
 
-**Phase 6 — usable editor.** Open `appearances.dat` + `items.otb` from
-disk, browse 30k+ items in a virtualized list with category tabs and
-cross-reference badges, edit the common subset of attributes on both
-sides, undo/redo, save with `.bak` backups, create new objects/OTB
-items from scratch, and preview sprites once the client's `assets/`
-directory is pointed at. Multi-OS installers are produced by GitHub
-Actions on tag push.
+**Phase 6 — usable editor.** The Assets Editor is the most complete
+tool: open `appearances.dat` + `items.otb` from disk, browse 30k+
+items in a virtualized list with category tabs and cross-reference
+badges, edit the common subset of attributes on both sides, undo/redo,
+save with `.bak` backups, create new objects/OTB items from scratch,
+and preview sprites once the client's `assets/` directory is pointed
+at. Multi-OS installers are produced by GitHub Actions on tag push.
 
-PNG import for new sprites and the full sprite editor (cut, animate,
-sheet management) are still ahead — see `docs/phase-7-todo.md`.
+The **OTB Converter** has its UI scaffolded but the legacy `.dat`/
+`.spr` readers and the modern sheet writer are still TODO — see
+`docs/phase-7-todo.md`. The **Map Editor** is a placeholder card.
 
 ## Roadmap
 
@@ -102,17 +113,33 @@ Outputs platform installers (`.msi`, `.dmg`, `.AppImage`, `.deb`) in
 ## Repository layout
 
 ```
-atlas-assets-editor/
-├── crates/
+atlas-editor/
+├── crates/                  Shared Rust libraries
 │   ├── atlas-core/          Shared types (AssetId, errors, categories)
 │   ├── atlas-appearances/   Read/write appearances.dat (prost)
 │   ├── atlas-otb/           Read/write items.otb + Atlas extensions
-│   └── atlas-sprites/       LZMA decompression + PNG decoding
-├── src-tauri/               Tauri 2 backend (thin IPC layer)
-├── frontend/                React + Vite + Tailwind UI
+│   ├── atlas-sprites/       LZMA decompression + PNG decoding
+│   └── atlas-workspace/     Cross-ref between OTB and appearances
+├── src-tauri/
+│   └── src/
+│       ├── lib.rs           Tauri entry — registers commands per tool
+│       ├── assets/          Assets Editor commands + edits dispatcher
+│       └── converter/       OTB Converter commands (stub today)
+├── frontend/
+│   └── src/
+│       ├── App.tsx          Top-level tool router
+│       ├── HomeScreen.tsx   Tile grid for picking a tool
+│       ├── appStore.ts      `currentTool` Zustand store
+│       ├── shared/          Logo + cn() helper
+│       └── tools/
+│           ├── assets/      Launcher + Editor + sub-components
+│           ├── converter/   File-picker UI (logic pending)
+│           └── map/         Coming-soon placeholder
 ├── docs/
 │   ├── architecture.md      Component overview
 │   ├── otb-format.md        Byte-level spec of OTB extensions
+│   ├── spr-legacy.md        Legacy .spr format notes
+│   ├── phase-7-todo.md      Outstanding work
 │   └── contributing.md      Dev setup and PR flow
 └── .github/workflows/       CI (multi-OS rust + frontend)
 ```
@@ -122,5 +149,5 @@ picture.
 
 ## License
 
-[Apache License 2.0](LICENSE). Atlas Assets Editor is free for commercial
+[Apache License 2.0](LICENSE). Atlas Editor is free for commercial
 and non-commercial use, including in proprietary or paid Tibia servers.

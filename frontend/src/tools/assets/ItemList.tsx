@@ -2,9 +2,9 @@ import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertTriangle, GitMerge, Plus, Search } from "lucide-react";
 
-import { useWorkspace } from "../stores/workspace";
-import type { AppearanceRow, OtbItemRowDto } from "../types";
-import { cn } from "../lib/utils";
+import { useWorkspace } from "./store";
+import type { AppearanceRow, OtbItemRowDto } from "./types";
+import { cn } from "../../shared/utils";
 
 const ROW_HEIGHT = 32;
 

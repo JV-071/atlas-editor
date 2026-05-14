@@ -1,10 +1,15 @@
-//! Tauri IPC commands exposed to the frontend.
+//! Tauri IPC commands for the Assets Editor tool.
 //!
 //! Each command is a thin shim around an `atlas-*` crate function. The
 //! parsed workspace lives in `tauri::State` as a `Mutex<WorkspaceState>`
 //! so commands can mutate it without leaking lock guards across `.await`
 //! points (parsing is synchronous and CPU-bound; Tauri runs each command
 //! on its own task, so blocking the lock briefly is acceptable).
+//!
+//! Commands here all start with one of `open_*`, `list_*`, `get_*`,
+//! `update_*`, `save_*`, `undo` / `redo`, `set_assets_dir`,
+//! `create_*` — all scoped to the Assets Editor's workflow. The
+//! Converter tool has its own module.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -18,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
-use crate::edits::{self, AppearanceScope};
+use super::edits::{self, AppearanceScope};
 
 /// Maximum number of snapshots kept in undo history. Each snapshot is a
 /// full `Workspace` clone (~few MB for a real catalog), so the cap is

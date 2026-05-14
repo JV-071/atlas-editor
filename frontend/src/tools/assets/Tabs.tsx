@@ -1,8 +1,8 @@
 import { FileText, Package, Sparkles, Target, User, type LucideIcon } from "lucide-react";
 
-import { useWorkspace } from "../stores/workspace";
-import type { Category } from "../types";
-import { cn } from "../lib/utils";
+import { useWorkspace } from "./store";
+import type { Category } from "./types";
+import { cn } from "../../shared/utils";
 
 interface TabDef {
   id: Category;

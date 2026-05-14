@@ -39,7 +39,7 @@ import {
   type PixelFormat,
   type RecentFiles,
   type WorkspaceSummary,
-} from "../types";
+} from "./types";
 
 export type AppView = "launcher" | "editor";
 

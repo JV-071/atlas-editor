@@ -1,12 +1,23 @@
-//! Tauri 2 entry point for Atlas Assets Editor.
+//! Tauri 2 entry point for Atlas Editor.
 //!
-//! The backend is intentionally thin: it forwards work to the `atlas-*`
-//! crates and exposes them to the frontend through Tauri commands.
+//! Atlas Editor is a suite of three tools that share infrastructure:
+//!
+//! - **Assets Editor** ([`assets`]) — opens modern Tibia client
+//!   asset bundles, edits attributes, saves with undo/redo.
+//! - **Converter** ([`converter`]) — turns a legacy server bundle
+//!   (`items.otb` + Tibia 7.x–10.x `.dat`/`.spr`) into a modern
+//!   assets folder. Currently stubbed.
+//! - **Map Editor** — not yet implemented; the UI shows a "coming
+//!   soon" placeholder.
+//!
+//! The backend stays intentionally thin: each tool exposes IPC
+//! commands that wrap the relevant `atlas-*` crate functions; the UI
+//! routes between tools client-side.
 
-mod commands;
-mod edits;
+mod assets;
+mod converter;
 
-use commands::{SharedWorkspace, WorkspaceState};
+use assets::{SharedWorkspace, WorkspaceState};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,34 +38,38 @@ pub fn run() {
             // hydration cannot happen at `manage()` time.
             let handle = app.handle().clone();
             let state = app.state::<SharedWorkspace>();
-            commands::hydrate_recent_files(&handle, &state);
+            assets::hydrate_recent_files(&handle, &state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::open_appearances,
-            commands::open_otb,
-            commands::close_workspace,
-            commands::get_workspace_summary,
-            commands::get_recent_files,
-            commands::list_appearances,
-            commands::list_otb_items,
-            commands::get_appearance,
-            commands::get_otb_item,
-            commands::update_appearance_field,
-            commands::update_otb_item_field,
-            commands::undo,
-            commands::redo,
-            commands::save_appearances,
-            commands::save_otb,
-            commands::set_assets_dir,
-            commands::open_assets_bundle,
-            commands::get_assets_dir_info,
-            commands::get_sprite_png,
-            commands::set_sprite_pixel_format,
-            commands::get_sprite_pixel_format,
-            commands::inspect_sprite,
-            commands::create_object_appearance,
-            commands::create_otb_item,
+            // Assets Editor
+            assets::commands::open_appearances,
+            assets::commands::open_otb,
+            assets::commands::close_workspace,
+            assets::commands::get_workspace_summary,
+            assets::commands::get_recent_files,
+            assets::commands::list_appearances,
+            assets::commands::list_otb_items,
+            assets::commands::get_appearance,
+            assets::commands::get_otb_item,
+            assets::commands::update_appearance_field,
+            assets::commands::update_otb_item_field,
+            assets::commands::undo,
+            assets::commands::redo,
+            assets::commands::save_appearances,
+            assets::commands::save_otb,
+            assets::commands::set_assets_dir,
+            assets::commands::open_assets_bundle,
+            assets::commands::get_assets_dir_info,
+            assets::commands::get_sprite_png,
+            assets::commands::set_sprite_pixel_format,
+            assets::commands::get_sprite_pixel_format,
+            assets::commands::inspect_sprite,
+            assets::commands::create_object_appearance,
+            assets::commands::create_otb_item,
+            // Converter
+            converter::commands::converter_peek,
+            converter::commands::converter_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

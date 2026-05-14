@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Check,
   Copy,
@@ -10,9 +11,10 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import logoUrl from "../assets/logo.png";
-import { resizeWindow, useWorkspace } from "../stores/workspace";
-import { cn } from "../lib/utils";
+import { useApp } from "../../appStore";
+import logoUrl from "../../shared/logo.png";
+import { resizeWindow, useWorkspace } from "./store";
+import { cn } from "../../shared/utils";
 
 function basename(path: string): string {
   const cleaned = path.replace(/\\/g, "/");
@@ -130,6 +132,7 @@ export function Launcher() {
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
   const enterEditor = useWorkspace((s) => s.enterEditor);
   const refreshRecent = useWorkspace((s) => s.refreshRecent);
+  const setTool = useApp((s) => s.setTool);
 
   useEffect(() => {
     void refreshRecent();
@@ -152,6 +155,15 @@ export function Launcher() {
 
   return (
     <main className="h-screen w-screen flex flex-col items-center bg-atlas-cream text-atlas-ink p-5 overflow-y-auto">
+      <button
+        type="button"
+        onClick={() => setTool("home")}
+        className="self-start mb-2 inline-flex items-center gap-1 text-xs text-atlas-muted hover:text-atlas-ink"
+      >
+        <ArrowLeft className="h-3 w-3" />
+        Atlas Editor
+      </button>
+
       <header className="mb-5 flex flex-col items-center shrink-0">
         <div className="mb-3 rounded-2xl border border-atlas-border bg-atlas-paper p-3 shadow-sm ring-1 ring-atlas-ink/5">
           <img
