@@ -16,7 +16,7 @@ use std::sync::Mutex;
 
 use atlas_appearances::{AppearanceInfo, Appearances};
 use atlas_otb::Otb;
-use atlas_sprites::{Atlas, PixelFormat, SheetInspection};
+use atlas_sprites::{Atlas, PixelFormat, SheetInspection, SpriteDims};
 use atlas_workspace::Workspace;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -615,6 +615,50 @@ pub fn list_otb_items(state: State<'_, SharedWorkspace>) -> Result<Vec<OtbItemRo
         })
         .collect();
 
+    Ok(rows)
+}
+
+/// Per-sheet sprite range surfaced to the Sprite browser. The grid in
+/// the frontend reconstructs the full id list by walking these ranges
+/// in order (catalog entries are sorted by `firstspriteid` at load
+/// time).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpriteRangeDto {
+    pub firstspriteid: u32,
+    pub lastspriteid: u32,
+    pub spritetype: u32,
+    pub width: u32,
+    pub height: u32,
+    pub sheet_file: String,
+}
+
+#[tauri::command]
+pub fn list_sprite_ranges(
+    state: State<'_, SharedWorkspace>,
+) -> Result<Vec<SpriteRangeDto>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let Some(atlas) = guard.atlas.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let rows = atlas
+        .catalog()
+        .sheets
+        .iter()
+        .filter_map(|s| {
+            // Unknown sprite types are skipped — the renderer wouldn't
+            // know how to crop tiles out of them anyway.
+            let dims = SpriteDims::from_spritetype(s.spritetype).ok()?;
+            Some(SpriteRangeDto {
+                firstspriteid: s.firstspriteid,
+                lastspriteid: s.lastspriteid,
+                spritetype: s.spritetype,
+                width: dims.width,
+                height: dims.height,
+                sheet_file: s.file.clone(),
+            })
+        })
+        .collect();
     Ok(rows)
 }
 

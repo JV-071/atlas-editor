@@ -1,13 +1,12 @@
-import { Package, Sparkles, Target, User, type LucideIcon } from "lucide-react";
+import { Grid3X3, Package, Sparkles, Target, User, type LucideIcon } from "lucide-react";
 
 import { useWorkspace } from "./store";
-import type { Category, WorkspaceSummary } from "./types";
+import type { Category } from "./types";
 import { cn } from "../../shared/utils";
 
 interface TabDef {
   id: Category;
   label: string;
-  count: keyof WorkspaceSummary;
   icon: LucideIcon;
   /// Tailwind text/border/bg color tokens for this tab's accent.
   iconClass: string;
@@ -19,7 +18,6 @@ const TABS: TabDef[] = [
   {
     id: "object",
     label: "Objects",
-    count: "objectCount",
     icon: Package,
     iconClass: "text-amber-700",
     activeBorderClass: "border-amber-700",
@@ -28,7 +26,6 @@ const TABS: TabDef[] = [
   {
     id: "outfit",
     label: "Outfits",
-    count: "outfitCount",
     icon: User,
     iconClass: "text-sky-700",
     activeBorderClass: "border-sky-700",
@@ -37,7 +34,6 @@ const TABS: TabDef[] = [
   {
     id: "effect",
     label: "Effects",
-    count: "effectCount",
     icon: Sparkles,
     iconClass: "text-fuchsia-700",
     activeBorderClass: "border-fuchsia-700",
@@ -46,24 +42,49 @@ const TABS: TabDef[] = [
   {
     id: "missile",
     label: "Missiles",
-    count: "missileCount",
     icon: Target,
     iconClass: "text-rose-700",
     activeBorderClass: "border-rose-700",
     activeBgClass: "bg-rose-700/10",
   },
+  {
+    id: "sprites",
+    label: "Sprites",
+    icon: Grid3X3,
+    iconClass: "text-emerald-700",
+    activeBorderClass: "border-emerald-700",
+    activeBgClass: "bg-emerald-700/10",
+  },
 ];
+
+function tabCount(id: Category, summary: ReturnType<typeof useWorkspace.getState>["summary"], spriteCount: number): number {
+  switch (id) {
+    case "object":
+      return summary.objectCount;
+    case "outfit":
+      return summary.outfitCount;
+    case "effect":
+      return summary.effectCount;
+    case "missile":
+      return summary.missileCount;
+    case "sprites":
+      return spriteCount;
+  }
+}
 
 export function Tabs() {
   const active = useWorkspace((s) => s.category);
   const summary = useWorkspace((s) => s.summary);
   const setCategory = useWorkspace((s) => s.setCategory);
+  const spriteCount = useWorkspace((s) =>
+    s.spriteRanges.reduce((acc, r) => acc + (r.lastspriteid - r.firstspriteid + 1), 0),
+  );
 
   return (
     <div className="flex border-b border-atlas-border bg-atlas-paper">
       {TABS.map((tab) => {
         const isActive = tab.id === active;
-        const count = summary[tab.count] as number;
+        const count = tabCount(tab.id, summary, spriteCount);
         const Icon = tab.icon;
         return (
           <button
@@ -104,4 +125,5 @@ export const CATEGORY_META: Record<
   outfit: { icon: User, iconClass: "text-sky-700", textClass: "text-sky-700" },
   effect: { icon: Sparkles, iconClass: "text-fuchsia-700", textClass: "text-fuchsia-700" },
   missile: { icon: Target, iconClass: "text-rose-700", textClass: "text-rose-700" },
+  sprites: { icon: Grid3X3, iconClass: "text-emerald-700", textClass: "text-emerald-700" },
 };

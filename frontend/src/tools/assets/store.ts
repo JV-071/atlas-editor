@@ -24,10 +24,11 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 }
 
 import {
-  CATEGORIES,
+  APPEARANCE_CATEGORIES,
   emptyRecent,
   emptyRowsByCategory,
   emptySummary,
+  type AppearanceCategory,
   type AppearanceInfoDto,
   type AppearanceRow,
   type AssetsBundleResult,
@@ -35,6 +36,7 @@ import {
   type Category,
   type PixelFormat,
   type RecentFiles,
+  type SpriteRangeDto,
   type WorkspaceSummary,
 } from "./types";
 
@@ -46,7 +48,8 @@ interface WorkspaceState {
   view: AppView;
   summary: WorkspaceSummary;
   versionHint: string | null;
-  rowsByCategory: Record<Category, AppearanceRow[]>;
+  rowsByCategory: Record<AppearanceCategory, AppearanceRow[]>;
+  spriteRanges: SpriteRangeDto[];
   category: Category;
   selectedId: number | null;
   /// Full appearance payload for the editor, refreshed whenever the
@@ -86,15 +89,15 @@ interface WorkspaceState {
   createObjectAppearance: () => Promise<void>;
 }
 
-async function fetchAllCategories(): Promise<Record<Category, AppearanceRow[]>> {
+async function fetchAllCategories(): Promise<Record<AppearanceCategory, AppearanceRow[]>> {
   const results = await Promise.all(
-    CATEGORIES.map((cat) =>
+    APPEARANCE_CATEGORIES.map((cat) =>
       invoke<AppearanceRow[]>("list_appearances", { category: cat }).then(
         (rows) => [cat, rows] as const,
       ),
     ),
   );
-  return Object.fromEntries(results) as Record<Category, AppearanceRow[]>;
+  return Object.fromEntries(results) as Record<AppearanceCategory, AppearanceRow[]>;
 }
 
 /// Resize the current Tauri window between the compact launcher,
@@ -136,6 +139,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   summary: emptySummary,
   versionHint: null,
   rowsByCategory: emptyRowsByCategory,
+  spriteRanges: [],
   category: "object",
   selectedId: null,
   selectedAppearance: null,
@@ -199,6 +203,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({
       summary,
       rowsByCategory: emptyRowsByCategory,
+      spriteRanges: [],
       selectedId: null,
       selectedAppearance: null,
       query: "",
@@ -207,8 +212,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async refreshRows() {
-    const rowsByCategory = await fetchAllCategories();
-    set({ rowsByCategory });
+    const [rowsByCategory, spriteRanges] = await Promise.all([
+      fetchAllCategories(),
+      invoke<SpriteRangeDto[]>("list_sprite_ranges").catch(() => [] as SpriteRangeDto[]),
+    ]);
+    set({ rowsByCategory, spriteRanges });
   },
 
   async refreshRecent() {
@@ -219,6 +227,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   async refreshSelectedDetails() {
     const { selectedId, category } = get();
     if (selectedId == null) {
+      set({ selectedAppearance: null });
+      return;
+    }
+    // Sprites tab: selection is a sprite_id, not an appearance id, and
+    // the detail panel doesn't need the appearance payload.
+    if (category === "sprites") {
       set({ selectedAppearance: null });
       return;
     }
@@ -240,7 +254,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   async updateAppearanceField(field, value) {
     const { category, selectedId } = get();
-    if (selectedId == null) return;
+    if (selectedId == null || category === "sprites") return;
     try {
       const summary = await invoke<WorkspaceSummary>("update_appearance_field", {
         scope: category,

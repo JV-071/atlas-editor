@@ -2,8 +2,9 @@ import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Plus, Search } from "lucide-react";
 
+import { SpriteGrid } from "./SpriteGrid";
 import { useWorkspace } from "./store";
-import type { AppearanceRow } from "./types";
+import type { AppearanceCategory, AppearanceRow } from "./types";
 import { cn } from "../../shared/utils";
 
 const ROW_HEIGHT = 32;
@@ -16,9 +17,23 @@ function matches(row: AppearanceRow, needle: string): boolean {
   return false;
 }
 
+/// Stable empty array reused when the category is "sprites" so the
+/// appearance-row selector doesn't churn (returning `[]` inline trips
+/// Zustand's strict-equality re-render loop).
+const EMPTY_APPEARANCE_ROWS: AppearanceRow[] = [];
+
 export function ItemList() {
   const category = useWorkspace((s) => s.category);
-  const rows = useWorkspace((s) => s.rowsByCategory[s.category]);
+  // Sprites tab has a completely different layout — bail before we
+  // touch any appearance-row state.
+  if (category === "sprites") {
+    return <SpriteGrid />;
+  }
+  return <AppearanceList category={category} />;
+}
+
+function AppearanceList({ category }: { category: AppearanceCategory }) {
+  const rows = useWorkspace((s) => s.rowsByCategory[category] ?? EMPTY_APPEARANCE_ROWS);
   const appearancesLoaded = useWorkspace((s) => s.summary.appearancesPath !== null);
   const query = useWorkspace((s) => s.query);
   const setQuery = useWorkspace((s) => s.setQuery);

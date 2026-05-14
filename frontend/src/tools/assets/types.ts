@@ -7,9 +7,31 @@
 // not surfaced here — the Assets Editor doesn't edit OTBs. They'll
 // move into the Converter or a future OTB tool when the time comes.
 
-export type Category = "object" | "outfit" | "effect" | "missile";
+/// Appearance categories backed by `appearances.dat`, plus the
+/// catalog-level "sprites" browser. The first four come from the
+/// appearance proto; "sprites" reads directly from the sprite sheet
+/// ranges in `catalog-content.json`.
+export type Category = "object" | "outfit" | "effect" | "missile" | "sprites";
 
-export const CATEGORIES: Category[] = ["object", "outfit", "effect", "missile"];
+export type AppearanceCategory = "object" | "outfit" | "effect" | "missile";
+
+export const APPEARANCE_CATEGORIES: AppearanceCategory[] = [
+  "object",
+  "outfit",
+  "effect",
+  "missile",
+];
+
+export const CATEGORIES: Category[] = [...APPEARANCE_CATEGORIES, "sprites"];
+
+export interface SpriteRangeDto {
+  firstspriteid: number;
+  lastspriteid: number;
+  spritetype: number;
+  width: number;
+  height: number;
+  sheetFile: string;
+}
 
 export interface WorkspaceSummary {
   appearancesPath: string | null;
@@ -178,7 +200,10 @@ export const emptyRecent: RecentFiles = {
   appearances: [],
 };
 
-export const emptyRowsByCategory: Record<Category, AppearanceRow[]> = {
+/// Appearance row maps, indexed by appearance category only. The
+/// "sprites" tab has its own data path (`spriteRanges`) and doesn't
+/// share this shape.
+export const emptyRowsByCategory: Record<AppearanceCategory, AppearanceRow[]> = {
   object: [],
   outfit: [],
   effect: [],
