@@ -48,6 +48,9 @@ pub fn run() {
             commands::set_assets_dir,
             commands::get_assets_dir_info,
             commands::get_sprite_png,
+            commands::set_sprite_pixel_format,
+            commands::get_sprite_pixel_format,
+            commands::inspect_sprite,
             commands::create_object_appearance,
             commands::create_otb_item,
         ])

@@ -33,6 +33,7 @@ import {
   type AssetsDirInfo,
   type Category,
   type OtbItemDto,
+  type PixelFormat,
   type RecentFiles,
   type WorkspaceSummary,
 } from "../types";
@@ -79,6 +80,10 @@ interface WorkspaceState {
   pickAssetsDir: () => Promise<void>;
   refreshAssetsDirInfo: () => Promise<void>;
   fetchSpritePng: (spriteId: number) => Promise<string | null>;
+  pixelFormat: PixelFormat;
+  spriteCacheBust: number;
+  cyclePixelFormat: () => Promise<void>;
+  refreshPixelFormat: () => Promise<void>;
 
   createObjectAppearance: () => Promise<void>;
   createLinkedOtbItem: () => Promise<void>;
@@ -122,6 +127,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   error: null,
   recent: emptyRecent,
   assetsDir: null,
+  pixelFormat: "bgra",
+  spriteCacheBust: 0,
 
   setQuery: (query) => set({ query }),
   setCategory: (category) =>
@@ -342,6 +349,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().setSelected(info.appearanceId);
     } catch (e) {
       set({ error: String(e) });
+    }
+  },
+
+  async cyclePixelFormat() {
+    const order: PixelFormat[] = ["bgra", "rgba", "argb", "abgr"];
+    const current = get().pixelFormat;
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    try {
+      const applied = await invoke<PixelFormat>("set_sprite_pixel_format", {
+        format: next,
+      });
+      set({ pixelFormat: applied, spriteCacheBust: get().spriteCacheBust + 1 });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async refreshPixelFormat() {
+    try {
+      const pf = await invoke<PixelFormat | null>("get_sprite_pixel_format");
+      if (pf) set({ pixelFormat: pf });
+    } catch {
+      // Pre-assets state — ignore.
     }
   },
 

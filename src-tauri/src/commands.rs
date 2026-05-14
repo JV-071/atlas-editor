@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use atlas_appearances::{AppearanceInfo, Appearances};
 use atlas_otb::Otb;
-use atlas_sprites::Atlas;
+use atlas_sprites::{Atlas, PixelFormat, SheetInspection};
 use atlas_workspace::Workspace;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -628,6 +628,48 @@ pub fn get_assets_dir_info(
             .map(|s| s.firstspriteid)
             .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid)),
     }))
+}
+
+/// Diagnostic dump of the sheet covering `sprite_id`. Returns the
+/// sheet's catalog metadata plus the first bytes of the raw + decoded
+/// streams so we can debug pixel-format mismatches without rebuilding.
+#[tauri::command]
+pub fn inspect_sprite(
+    sprite_id: u32,
+    state: State<'_, SharedWorkspace>,
+) -> Result<SheetInspection, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let atlas = guard
+        .atlas
+        .as_ref()
+        .ok_or("assets dir is not set — open assets first")?;
+    atlas.inspect(sprite_id).map_err(|e| e.to_string())
+}
+
+/// Change the on-disk channel order the sprite atlas uses to decode
+/// sheets. Returns the new format so the UI can reflect it. Clears
+/// the sheet cache so the next `get_sprite_png` redecodes with the
+/// fresh permutation.
+#[tauri::command]
+pub fn set_sprite_pixel_format(
+    format: PixelFormat,
+    state: State<'_, SharedWorkspace>,
+) -> Result<PixelFormat, String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let atlas = guard
+        .atlas
+        .as_mut()
+        .ok_or("assets dir is not set — open assets first")?;
+    atlas.set_pixel_format(format);
+    Ok(atlas.pixel_format())
+}
+
+#[tauri::command]
+pub fn get_sprite_pixel_format(
+    state: State<'_, SharedWorkspace>,
+) -> Result<Option<PixelFormat>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    Ok(guard.atlas.as_ref().map(|a| a.pixel_format()))
 }
 
 /// Encode the requested sprite as a `data:image/png;base64,...` string

@@ -199,3 +199,6 @@ export interface AssetsDirInfo {
   sheetCount: number;
   spriteIdRange: [number, number] | null;
 }
+
+export type PixelFormat = "bgra" | "rgba" | "argb" | "abgr";
+export const PIXEL_FORMATS: PixelFormat[] = ["bgra", "rgba", "argb", "abgr"];

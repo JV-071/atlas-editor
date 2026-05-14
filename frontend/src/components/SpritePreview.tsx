@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ImageOff } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { ImageOff, Search } from "lucide-react";
 
 import { useWorkspace } from "../stores/workspace";
 import { cn } from "../lib/utils";
@@ -15,6 +16,7 @@ interface Props {
 export function SpritePreview({ spriteIds }: Props) {
   const fetchSpritePng = useWorkspace((s) => s.fetchSpritePng);
   const assetsDir = useWorkspace((s) => s.assetsDir);
+  const cacheBust = useWorkspace((s) => s.spriteCacheBust);
   const [images, setImages] = useState<(string | null)[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -38,7 +40,9 @@ export function SpritePreview({ spriteIds }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [spriteIds, fetchSpritePng, assetsDir]);
+    // cacheBust is intentional — bumping it forces a refetch after a
+    // pixel-format change without the parent re-mounting.
+  }, [spriteIds, fetchSpritePng, assetsDir, cacheBust]);
 
   if (spriteIds.length === 0) {
     return (
@@ -54,6 +58,20 @@ export function SpritePreview({ spriteIds }: Props) {
     );
   }
 
+  async function inspect(id: number) {
+    try {
+      const info = await invoke("inspect_sprite", { spriteId: id });
+      // Pretty-print to the JS console so the user can copy from DevTools.
+      console.log("sprite inspection", info);
+      // Also surface a copy-friendly summary in an alert as a fallback
+      // (DevTools may not be open in a packaged build).
+      const json = JSON.stringify(info, null, 2);
+      alert(`Sprite ${id} inspection (copy this back):\n\n${json}`);
+    } catch (e) {
+      alert(`inspect failed: ${e}`);
+    }
+  }
+
   return (
     <div className="flex flex-wrap gap-2">
       {spriteIds.map((id, i) => {
@@ -62,7 +80,7 @@ export function SpritePreview({ spriteIds }: Props) {
           <div
             key={`${id}-${i}`}
             className={cn(
-              "relative w-16 h-16 rounded border border-atlas-border bg-atlas-paper flex items-center justify-center overflow-hidden",
+              "relative w-16 h-16 rounded border border-atlas-border bg-atlas-paper flex items-center justify-center overflow-hidden group",
               loading && !url && "animate-pulse",
             )}
             title={`sprite ${id}`}
@@ -77,6 +95,14 @@ export function SpritePreview({ spriteIds }: Props) {
             ) : (
               <ImageOff className="h-5 w-5 text-atlas-muted/60" />
             )}
+            <button
+              type="button"
+              onClick={() => void inspect(id)}
+              title="Inspect sheet bytes"
+              className="absolute top-0.5 left-0.5 p-0.5 rounded bg-atlas-paper/80 text-atlas-muted opacity-0 group-hover:opacity-100 hover:text-atlas-ink"
+            >
+              <Search className="h-3 w-3" />
+            </button>
             <span className="absolute bottom-0.5 right-1 text-[9px] text-atlas-muted font-mono bg-atlas-paper/80 px-1 rounded">
               {id}
             </span>

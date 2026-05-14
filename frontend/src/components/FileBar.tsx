@@ -95,6 +95,8 @@ export function FileBar() {
   const saveOtb = useWorkspace((s) => s.saveOtb);
   const pickAssetsDir = useWorkspace((s) => s.pickAssetsDir);
   const assetsDir = useWorkspace((s) => s.assetsDir);
+  const pixelFormat = useWorkspace((s) => s.pixelFormat);
+  const cyclePixelFormat = useWorkspace((s) => s.cyclePixelFormat);
 
   const hasAnything = summary.appearancesPath || summary.otbPath;
 
@@ -177,6 +179,17 @@ export function FileBar() {
         <ImageIcon className="h-4 w-4" />
         {assetsDir ? "Assets ✓" : "Open assets"}
       </button>
+
+      {assetsDir && (
+        <button
+          type="button"
+          onClick={() => void cyclePixelFormat()}
+          title="Cycle on-disk pixel format (click until colors look right)"
+          className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium border border-atlas-border bg-atlas-cream text-atlas-ink-soft hover:bg-atlas-sand uppercase tracking-wider tabular-nums"
+        >
+          {pixelFormat}
+        </button>
+      )}
 
       <div className="ml-3 flex-1 min-w-0 text-xs text-atlas-muted truncate">
         {summary.appearancesPath && (

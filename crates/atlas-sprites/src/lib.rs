@@ -39,6 +39,72 @@ use thiserror::Error;
 
 pub use atlas_core::AssetId;
 
+/// On-disk channel order for sprite sheet pixels. The Tibia 12+ format
+/// nominally uses BGRA, but the layout has shifted across client builds.
+/// Expose this as a runtime knob so the user can pick the right one
+/// without rebuilding when colors come out wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PixelFormat {
+    /// Bytes on disk are B, G, R, A. Swap to R, G, B, A on read.
+    Bgra,
+    /// Bytes on disk are R, G, B, A. No swap.
+    Rgba,
+    /// Bytes on disk are A, R, G, B (Windows/GDI native). Reorder to RGBA.
+    Argb,
+    /// Bytes on disk are A, B, G, R. Reorder to RGBA.
+    Abgr,
+}
+
+impl Default for PixelFormat {
+    fn default() -> Self {
+        // Tibia 12+ documents RGBA8888 — see docs/spr-legacy.md, last
+        // section. Earlier hand-coded BGRA was a hold-over from the
+        // legacy `.spr` reverse-engineering.
+        Self::Rgba
+    }
+}
+
+impl PixelFormat {
+    /// Permute a 4-byte input chunk into a [R, G, B, A] output chunk.
+    fn to_rgba(self, c: &[u8]) -> [u8; 4] {
+        match self {
+            Self::Bgra => [c[2], c[1], c[0], c[3]],
+            Self::Rgba => [c[0], c[1], c[2], c[3]],
+            Self::Argb => [c[1], c[2], c[3], c[0]],
+            Self::Abgr => [c[3], c[2], c[1], c[0]],
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SheetInspection {
+    pub sprite_id: u32,
+    pub sheet_file: String,
+    pub firstspriteid: u32,
+    pub lastspriteid: u32,
+    pub spritetype: u32,
+    pub area: u32,
+    pub raw_len: usize,
+    pub decoded_len: usize,
+    pub raw_head_hex: String,
+    pub decoded_head_hex: String,
+    /// Sheet side length auto-detected from `decoded_len`. `None` means
+    /// the decompressed bitmap isn't one of the known sizes — likely a
+    /// format we don't recognise yet.
+    pub detected_sheet_side: Option<u32>,
+}
+
+fn bytes_to_hex(b: &[u8]) -> String {
+    let mut s = String::with_capacity(b.len() * 2);
+    for &byte in b {
+        use std::fmt::Write;
+        let _ = write!(s, "{byte:02x}");
+    }
+    s
+}
+
 #[derive(Debug, Error)]
 pub enum SpriteError {
     #[error("I/O error reading {path}: {source}")]
@@ -147,9 +213,25 @@ impl SpriteDims {
     }
 }
 
-const SHEET_SIDE: u32 = 384;
+/// Cipsoft has shipped two sheet sizes across the modern client:
+/// 384×384 (Tibia 12.x) and 512×512 (Tibia 14+/15.x). The decoder
+/// auto-detects which one a given sheet uses from the decompressed
+/// byte count.
+const SHEET_SIDES: &[u32] = &[384, 512];
 const SHEET_HEADER_LEN: usize = 32;
 const BYTES_PER_PIXEL: usize = 4;
+
+/// Pick the sheet side that matches `decoded_len` exactly, or `None`
+/// when no candidate fits.
+fn detect_sheet_side(decoded_len: usize) -> Option<u32> {
+    for &side in SHEET_SIDES {
+        let expected = (side as usize) * (side as usize) * BYTES_PER_PIXEL;
+        if decoded_len == expected {
+            return Some(side);
+        }
+    }
+    None
+}
 
 /// In-memory catalog. Cheap to clone — just paths and small structs.
 #[derive(Debug, Clone)]
@@ -222,6 +304,9 @@ pub struct Atlas {
     /// (raw BGRA after a 32-byte header) which matches the modern
     /// Tibia 12+ format.
     bmp_wrap: bool,
+    /// Channel order of the on-disk pixel data. Exposed so the UI can
+    /// flip between candidates when colors come out wrong.
+    pixel_format: PixelFormat,
 }
 
 impl Atlas {
@@ -230,6 +315,7 @@ impl Atlas {
             catalog,
             cache: DashMap::new(),
             bmp_wrap: false,
+            pixel_format: PixelFormat::default(),
         }
     }
 
@@ -243,8 +329,71 @@ impl Atlas {
         self
     }
 
+    pub fn with_pixel_format(mut self, pf: PixelFormat) -> Self {
+        self.pixel_format = pf;
+        self.cache.clear();
+        self
+    }
+
+    pub fn set_pixel_format(&mut self, pf: PixelFormat) {
+        if self.pixel_format != pf {
+            self.pixel_format = pf;
+            self.cache.clear();
+        }
+    }
+
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.pixel_format
+    }
+
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
+    }
+
+    /// Diagnostic: load the sheet covering `sprite_id` and report its
+    /// raw + decoded sizes plus the first 32 bytes of decompressed
+    /// data. Useful when sprite colors come out wrong and we need to
+    /// inspect the on-disk layout without rebuilding.
+    pub fn inspect(&self, sprite_id: u32) -> Result<SheetInspection> {
+        let sheet = self
+            .catalog
+            .sheet_for(sprite_id)
+            .ok_or(SpriteError::UnknownSprite(sprite_id))?;
+        let path = self.catalog.assets_dir.join(&sheet.file);
+        let raw = std::fs::read(&path).map_err(|e| SpriteError::Io {
+            path: path.clone(),
+            source: e,
+        })?;
+        let raw_len = raw.len();
+        let raw_head = bytes_to_hex(&raw[..raw.len().min(48)]);
+
+        let mut decoded = Vec::new();
+        if raw.len() > SHEET_HEADER_LEN {
+            let mut reader = std::io::Cursor::new(&raw[SHEET_HEADER_LEN..]);
+            let options = lzma_rs::decompress::Options {
+                unpacked_size: lzma_rs::decompress::UnpackedSize::ReadHeaderButUseProvided(None),
+                ..Default::default()
+            };
+            // Swallow errors during inspection — we want the partial
+            // output (if any) and the head bytes to debug with.
+            let _ = lzma_rs::lzma_decompress_with_options(&mut reader, &mut decoded, &options);
+        }
+        let decoded_len = decoded.len();
+        let decoded_head = bytes_to_hex(&decoded[..decoded.len().min(64)]);
+
+        Ok(SheetInspection {
+            sprite_id,
+            sheet_file: sheet.file.clone(),
+            firstspriteid: sheet.firstspriteid,
+            lastspriteid: sheet.lastspriteid,
+            spritetype: sheet.spritetype,
+            area: sheet.area,
+            raw_len,
+            decoded_len,
+            raw_head_hex: raw_head,
+            decoded_head_hex: decoded_head,
+            detected_sheet_side: detect_sheet_side(decoded_len),
+        })
     }
 
     /// Return the RGBA-decoded sprite tile for `sprite_id`. Errors if
@@ -256,8 +405,9 @@ impl Atlas {
             .ok_or(SpriteError::UnknownSprite(sprite_id))?;
         let sheet_image = self.load_sheet(&sheet.file)?;
         let dims = SpriteDims::from_spritetype(sheet.spritetype)?;
+        let sheet_side = sheet_image.width(); // square sheet (height == width)
         let index_in_sheet = sprite_id - sheet.firstspriteid;
-        let cols = SHEET_SIDE / dims.width;
+        let cols = sheet_side / dims.width;
         let col = index_in_sheet % cols;
         let row = index_in_sheet / cols;
         let x = col * dims.width;
@@ -307,26 +457,34 @@ impl Atlas {
             },
         )?;
 
-        let image = if self.bmp_wrap {
+        // Auto-detect BMP-wrapped sheets by their "BM" magic. Real
+        // Tibia 12+ clients ship sheets as a Windows BMP (file header +
+        // BITMAPV4HEADER + bottom-up BGRA pixels) embedded in the LZMA
+        // stream — exactly 14 + 108 + W*H*4 bytes. The `image` crate
+        // handles BGR↔RGBA and the bottom-up row order for us.
+        let is_bmp = decoded.len() >= 2 && &decoded[..2] == b"BM";
+        let image = if is_bmp || self.bmp_wrap {
             image::load_from_memory_with_format(&decoded, image::ImageFormat::Bmp)
                 .map_err(|e| SpriteError::Catalog(format!("BMP decode for {path:?}: {e}")))?
                 .to_rgba8()
         } else {
-            let expected = (SHEET_SIDE as usize) * (SHEET_SIDE as usize) * BYTES_PER_PIXEL;
-            if decoded.len() < expected {
-                return Err(SpriteError::SheetTooSmall {
-                    path,
+            let sheet_side = detect_sheet_side(decoded.len()).ok_or_else(|| {
+                let expected =
+                    (SHEET_SIDES[0] as usize) * (SHEET_SIDES[0] as usize) * BYTES_PER_PIXEL;
+                SpriteError::SheetTooSmall {
+                    path: path.clone(),
                     actual: decoded.len(),
                     expected,
-                });
-            }
-            // The on-disk pixel order is BGRA; image's RgbaImage wants
-            // RGBA. Swap channels during the copy.
+                }
+            })?;
+            let expected = (sheet_side as usize) * (sheet_side as usize) * BYTES_PER_PIXEL;
+            // Permute the on-disk channels into RGBA per the configured
+            // `pixel_format`.
             let mut rgba = Vec::with_capacity(expected);
             for chunk in decoded[..expected].chunks_exact(4) {
-                rgba.extend_from_slice(&[chunk[2], chunk[1], chunk[0], chunk[3]]);
+                rgba.extend_from_slice(&self.pixel_format.to_rgba(chunk));
             }
-            RgbaImage::from_raw(SHEET_SIDE, SHEET_SIDE, rgba).expect("pre-validated buffer dims")
+            RgbaImage::from_raw(sheet_side, sheet_side, rgba).expect("pre-validated buffer dims")
         };
 
         let arc = std::sync::Arc::new(image);

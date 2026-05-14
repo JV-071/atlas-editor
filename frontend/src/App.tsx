@@ -11,6 +11,7 @@ export default function App() {
   const refreshRows = useWorkspace((s) => s.refreshRows);
   const refreshRecent = useWorkspace((s) => s.refreshRecent);
   const refreshAssetsDirInfo = useWorkspace((s) => s.refreshAssetsDirInfo);
+  const refreshPixelFormat = useWorkspace((s) => s.refreshPixelFormat);
 
   // On reload during `tauri dev`, the backend retains its state — refresh
   // the row cache + recent_files so the UI matches whatever is still in
@@ -19,7 +20,8 @@ export default function App() {
     void refreshRows();
     void refreshRecent();
     void refreshAssetsDirInfo();
-  }, [refreshRows, refreshRecent, refreshAssetsDirInfo]);
+    void refreshPixelFormat();
+  }, [refreshRows, refreshRecent, refreshAssetsDirInfo, refreshPixelFormat]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-atlas-cream text-atlas-ink">
