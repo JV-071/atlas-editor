@@ -74,6 +74,23 @@ pub struct AppearanceRow {
     pub has_otb_collision: bool,
 }
 
+/// Row shape for the OTB-only list view, used when the user loads an
+/// `items.otb` without (or in parallel with) the appearance catalog.
+/// Compared to AppearanceRow this carries the on-disk server_id as the
+/// natural key and surfaces whether the item has a matching appearance
+/// (for the editor to know when to enable the appearance section).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OtbItemRow {
+    pub server_id: u16,
+    pub client_id: Option<u16>,
+    pub name: Option<String>,
+    /// Stringified `ItemGroup` (Ground, Weapon, ...). Mirrors the
+    /// `serde(rename_all = "camelCase")` we apply on Rust enums.
+    pub group: String,
+    pub has_appearance_match: bool,
+}
+
 /// Which appearance category the frontend is asking for. Mirrors the
 /// proto top-level lists 1:1.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -552,6 +569,48 @@ pub fn hydrate_recent_files(app: &AppHandle, state: &SharedWorkspace) {
     if let Ok(mut guard) = state.lock() {
         guard.recent = recent;
     }
+}
+
+/// Project every loaded OTB item onto the lightweight row shape used
+/// by the OTB-only list view. Items with `server_id == None` are
+/// filtered out — they can't be addressed by the editor.
+#[tauri::command]
+pub fn list_otb_items(state: State<'_, SharedWorkspace>) -> Result<Vec<OtbItemRow>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let Some(otb) = guard.workspace.otb.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    // Build a set of appearance object ids once so the per-row
+    // `has_appearance_match` check is O(1) instead of O(N).
+    let appearance_ids: std::collections::HashSet<u32> = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .map(|a| a.objects.iter().map(|o| o.id.0).collect())
+        .unwrap_or_default();
+
+    let rows = otb
+        .items
+        .iter()
+        .filter_map(|item| {
+            let server_id = item.server_id?;
+            let has_appearance_match = item
+                .client_id
+                .filter(|cid| *cid != 0)
+                .map(|cid| appearance_ids.contains(&(cid as u32)))
+                .unwrap_or(false);
+            Some(OtbItemRow {
+                server_id,
+                client_id: item.client_id,
+                name: item.name.clone(),
+                group: format!("{:?}", item.group),
+                has_appearance_match,
+            })
+        })
+        .collect();
+
+    Ok(rows)
 }
 
 /// Full appearance payload for the attribute editor. Returns `None` if

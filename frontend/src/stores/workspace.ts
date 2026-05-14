@@ -24,16 +24,18 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 }
 
 import {
-  CATEGORIES,
+  APPEARANCE_CATEGORIES,
+  emptyAppearanceRowsByCategory,
   emptyRecent,
-  emptyRowsByCategory,
   emptySummary,
+  type AppearanceCategory,
   type AppearanceInfoDto,
   type AppearanceRow,
   type AssetsBundleResult,
   type AssetsDirInfo,
   type Category,
   type OtbItemDto,
+  type OtbItemRowDto,
   type PixelFormat,
   type RecentFiles,
   type WorkspaceSummary,
@@ -47,7 +49,8 @@ interface WorkspaceState {
   view: AppView;
   summary: WorkspaceSummary;
   versionHint: string | null;
-  rowsByCategory: Record<Category, AppearanceRow[]>;
+  rowsByCategory: Record<AppearanceCategory, AppearanceRow[]>;
+  otbRows: OtbItemRowDto[];
   category: Category;
   selectedId: number | null;
   /// Full appearance payload for the editor, refreshed whenever the
@@ -113,15 +116,15 @@ async function pickFile(
   return selected ?? null;
 }
 
-async function fetchAllCategories(): Promise<Record<Category, AppearanceRow[]>> {
+async function fetchAllAppearanceCategories(): Promise<Record<AppearanceCategory, AppearanceRow[]>> {
   const results = await Promise.all(
-    CATEGORIES.map((cat) =>
+    APPEARANCE_CATEGORIES.map((cat) =>
       invoke<AppearanceRow[]>("list_appearances", { category: cat }).then(
         (rows) => [cat, rows] as const,
       ),
     ),
   );
-  return Object.fromEntries(results) as Record<Category, AppearanceRow[]>;
+  return Object.fromEntries(results) as Record<AppearanceCategory, AppearanceRow[]>;
 }
 
 /// Resize the current Tauri window between the compact launcher,
@@ -162,7 +165,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   view: "launcher",
   summary: emptySummary,
   versionHint: null,
-  rowsByCategory: emptyRowsByCategory,
+  rowsByCategory: emptyAppearanceRowsByCategory,
+  otbRows: [],
   category: "object",
   selectedId: null,
   selectedAppearance: null,
@@ -219,10 +223,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     try {
       const summary = await invoke<WorkspaceSummary>("open_otb", { path });
       set({ summary, status: "idle" });
-      const tasks: Promise<unknown>[] = [get().refreshRecent()];
-      if (summary.objectCount > 0) tasks.push(get().refreshRows());
-      await Promise.all(tasks);
-      // If something was already selected, refresh the linked OTB side.
+      // Always refresh rows: even in OTB-only mode we need to populate
+      // the new OTB tab; with appearances also loaded, cross-ref data
+      // shifts.
+      await Promise.all([get().refreshRows(), get().refreshRecent()]);
       if (get().selectedId != null) await get().refreshSelectedDetails();
     } catch (e) {
       set({ status: "error", error: String(e) });
@@ -233,7 +237,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const summary = await invoke<WorkspaceSummary>("close_workspace");
     set({
       summary,
-      rowsByCategory: emptyRowsByCategory,
+      rowsByCategory: emptyAppearanceRowsByCategory,
+      otbRows: [],
       selectedId: null,
       selectedAppearance: null,
       selectedOtbItem: null,
@@ -243,8 +248,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async refreshRows() {
-    const rowsByCategory = await fetchAllCategories();
-    set({ rowsByCategory });
+    const [rowsByCategory, otbRows] = await Promise.all([
+      fetchAllAppearanceCategories(),
+      invoke<OtbItemRowDto[]>("list_otb_items"),
+    ]);
+    set({ rowsByCategory, otbRows });
   },
 
   async refreshRecent() {
@@ -258,6 +266,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ selectedAppearance: null, selectedOtbItem: null });
       return;
     }
+
+    if (category === "otb") {
+      // selectedId is the OTB server_id. Fetch the item directly,
+      // and if its client_id maps to an appearance, fetch that too.
+      const otbItem = await invoke<OtbItemDto | null>("get_otb_item", {
+        serverId: selectedId,
+      });
+      let appearance: AppearanceInfoDto | null = null;
+      if (otbItem?.clientId != null && otbItem.clientId !== 0) {
+        appearance = await invoke<AppearanceInfoDto | null>("get_appearance", {
+          scope: "object",
+          id: otbItem.clientId,
+        });
+      }
+      set({ selectedAppearance: appearance, selectedOtbItem: otbItem });
+      return;
+    }
+
     const appearance = await invoke<AppearanceInfoDto | null>("get_appearance", {
       scope: category,
       id: selectedId,
@@ -406,8 +432,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async enterEditor() {
+    // Default the category to whatever side has data: appearances if
+    // present, otherwise OTB. Stay on the user's last pick if both
+    // sides were already loaded.
+    const { summary, category } = get();
+    let nextCategory: Category = category;
+    const hasAppearances = summary.appearancesPath != null || summary.objectCount > 0;
+    const hasOtb = summary.otbPath != null;
+    if (category === "otb" && !hasOtb && hasAppearances) {
+      nextCategory = "object";
+    } else if (!hasAppearances && hasOtb && category !== "otb") {
+      nextCategory = "otb";
+    }
     await resizeWindow("editor");
-    set({ view: "editor" });
+    set({ view: "editor", category: nextCategory });
   },
 
   async goToLauncher() {

@@ -1,9 +1,23 @@
 // DTOs mirroring `src-tauri/src/commands.rs`. Keep in sync — there is no
 // codegen yet; mismatches surface as runtime `undefined`s in the UI.
 
-export type Category = "object" | "outfit" | "effect" | "missile";
+/// Tabs surfaced in the editor. The first four are appearance
+/// categories backed by `appearances.dat`; "otb" is the standalone
+/// OTB-only view, only meaningful when `items.otb` is loaded.
+export type Category = "object" | "outfit" | "effect" | "missile" | "otb";
 
-export const CATEGORIES: Category[] = ["object", "outfit", "effect", "missile"];
+/// Appearance categories only — used when calling
+/// `list_appearances(category)`. The "otb" tab has its own command.
+export type AppearanceCategory = "object" | "outfit" | "effect" | "missile";
+
+export const APPEARANCE_CATEGORIES: AppearanceCategory[] = [
+  "object",
+  "outfit",
+  "effect",
+  "missile",
+];
+
+export const CATEGORIES: Category[] = [...APPEARANCE_CATEGORIES, "otb"];
 
 export interface OtbVersion {
   major: number;
@@ -33,6 +47,14 @@ export interface AppearanceRow {
   otbServerId: number | null;
   isAppearanceOrphan: boolean;
   hasOtbCollision: boolean;
+}
+
+export interface OtbItemRowDto {
+  serverId: number;
+  clientId: number | null;
+  name: string | null;
+  group: string;
+  hasAppearanceMatch: boolean;
 }
 
 export interface RecentFiles {
@@ -196,7 +218,7 @@ export const emptyRecent: RecentFiles = {
   otb: [],
 };
 
-export const emptyRowsByCategory: Record<Category, AppearanceRow[]> = {
+export const emptyAppearanceRowsByCategory: Record<AppearanceCategory, AppearanceRow[]> = {
   object: [],
   outfit: [],
   effect: [],

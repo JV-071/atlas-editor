@@ -456,6 +456,55 @@ export function AttributeEditor() {
     );
   }
 
+  // OTB-only view: appearance can legitimately be `null` (the item has
+  // no matching client_id, or appearances aren't loaded at all). Render
+  // just the OTB section.
+  if (category === "otb") {
+    if (!otbItem) {
+      return (
+        <div className="flex-1 flex items-center justify-center text-atlas-muted text-sm">
+          Loading…
+        </div>
+      );
+    }
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="p-6 space-y-6 max-w-3xl">
+          <header className="flex items-center gap-3 pb-3 border-b border-atlas-border">
+            <Icon className={cn("h-6 w-6 shrink-0", meta.iconClass)} />
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold truncate">
+                {otbItem.name ?? <span className="italic text-atlas-muted">(unnamed)</span>}
+              </h2>
+              <p className="text-xs text-atlas-muted font-mono">
+                <span className={meta.textClass}>otb</span> · server_id {otbItem.serverId}
+                {otbItem.clientId != null && <> · client_id {otbItem.clientId}</>}
+                {appearance && <> · appearance match ✓</>}
+              </p>
+            </div>
+          </header>
+
+          {error && (
+            <div className="px-3 py-2 rounded bg-rose-100 border border-rose-300 text-sm text-rose-900">
+              {error}
+            </div>
+          )}
+
+          {appearance && (
+            <section className="space-y-2">
+              <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold">
+                Sprites (from matched appearance)
+              </h3>
+              <SpritePreview spriteIds={appearance.spriteIds} />
+            </section>
+          )}
+
+          <OtbSection item={otbItem} />
+        </div>
+      </div>
+    );
+  }
+
   if (!appearance) {
     return (
       <div className="flex-1 flex items-center justify-center text-atlas-muted text-sm">

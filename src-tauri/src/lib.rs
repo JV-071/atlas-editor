@@ -37,6 +37,7 @@ pub fn run() {
             commands::get_workspace_summary,
             commands::get_recent_files,
             commands::list_appearances,
+            commands::list_otb_items,
             commands::get_appearance,
             commands::get_otb_item,
             commands::update_appearance_field,
