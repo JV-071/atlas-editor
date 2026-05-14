@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Check,
   Copy,
-  FileText,
   FolderOpen,
   ImagePlus,
   RotateCcw,
@@ -28,8 +26,7 @@ function dirname(path: string): string {
   return idx === -1 ? cleaned : cleaned.slice(0, idx);
 }
 
-/// One-line "path · copy button" cluster. Shows the basename, falls
-/// back to the full string when the path is too short to split.
+/// One-line "path · copy button" cluster.
 function PathWithCopy({ path }: { path: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -86,30 +83,6 @@ function AssetsPreviewCard() {
   );
 }
 
-function OtbPreviewCard() {
-  const summary = useWorkspace((s) => s.summary);
-  if (!summary.otbPath) return null;
-  const ver = summary.otbVersion;
-  return (
-    <div className="rounded border border-emerald-700/50 bg-emerald-700/5 p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <Check className="h-4 w-4 text-emerald-700 shrink-0" />
-        <span className="text-sm font-semibold text-atlas-ink">items.otb loaded</span>
-        {ver && (
-          <span className="text-xs font-mono text-emerald-800 bg-emerald-700/10 px-1.5 py-0.5 rounded">
-            v{ver.major}.{ver.minor}.{ver.build}
-            {ver.atlasExtended && " · Atlas"}
-          </span>
-        )}
-      </div>
-      <PathWithCopy path={summary.otbPath} />
-      <div className="text-xs text-atlas-ink-soft">
-        <Stat label="Items" value={summary.otbItemCount} />
-      </div>
-    </div>
-  );
-}
-
 function Stat({ label, value, span }: { label: string; value: number; span?: 1 | 2 }) {
   return (
     <div className={cn("flex items-baseline gap-1.5", span === 2 && "col-span-2")}>
@@ -123,11 +96,8 @@ export function Launcher() {
   const status = useWorkspace((s) => s.status);
   const error = useWorkspace((s) => s.error);
   const recent = useWorkspace((s) => s.recent);
-  const summary = useWorkspace((s) => s.summary);
   const assetsDir = useWorkspace((s) => s.assetsDir);
   const pickAssetsBundle = useWorkspace((s) => s.pickAssetsBundle);
-  const openOtbPicker = useWorkspace((s) => s.openOtbPicker);
-  const openOtbPath = useWorkspace((s) => s.openOtbPath);
   const openAssetsBundlePath = useWorkspace((s) => s.openAssetsBundlePath);
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
   const enterEditor = useWorkspace((s) => s.enterEditor);
@@ -139,19 +109,17 @@ export function Launcher() {
   }, [refreshRecent]);
 
   const hasAssets = assetsDir != null;
-  const hasOtb = summary.otbPath != null;
-  const hasAnything = hasAssets || hasOtb;
 
-  // Grow the window the first time something is staged, shrink back if
-  // the user discards everything.
+  // Grow the window when an assets bundle is staged; shrink back if the
+  // user discards it.
   useEffect(() => {
-    void resizeWindow(hasAnything ? "launcher-staged" : "launcher-empty");
-  }, [hasAnything]);
+    void resizeWindow(hasAssets ? "launcher-staged" : "launcher-empty");
+  }, [hasAssets]);
 
   const recentAssetsPaths = recent.appearances
     .map(dirname)
     .filter((p, i, arr) => arr.indexOf(p) === i)
-    .slice(0, 3);
+    .slice(0, 4);
 
   return (
     <main className="h-screen w-screen flex flex-col items-center bg-atlas-cream text-atlas-ink p-5 overflow-y-auto">
@@ -173,22 +141,13 @@ export function Launcher() {
             draggable={false}
           />
         </div>
-        <h1 className="text-xl font-bold tracking-tight">Atlas Assets Editor</h1>
+        <h1 className="text-xl font-bold tracking-tight">Assets Editor</h1>
         <p className="text-[11px] text-atlas-muted mt-0.5">
-          Tibia 12+/15.x · appearances.dat ⇄ items.otb
+          Tibia 12+/15.x · appearances + sprites
         </p>
       </header>
 
-      {/* Step 1 (required): Tibia client assets — sprites + appearances.dat */}
       <div className="w-full max-w-xl">
-        <div className="flex items-center justify-between mb-1 px-1">
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-atlas-muted">
-            Step 1 · Client assets
-          </span>
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700">
-            Required
-          </span>
-        </div>
         <button
           type="button"
           onClick={() => void pickAssetsBundle()}
@@ -207,65 +166,16 @@ export function Launcher() {
               {hasAssets ? "Re-pick assets folder" : "Open assets folder"}
             </div>
             <div className="text-[11px] text-atlas-muted leading-snug">
-              Folder containing <code>catalog-content.json</code> — sprites and
-              appearances.dat live here. The Tibia client always reads from this.
+              Folder containing <code>catalog-content.json</code> — appearances
+              and sprites live here. The Tibia client always reads from this.
             </div>
           </div>
         </button>
       </div>
 
-      {/* Step 2 (optional): server-side items.otb */}
-      <div className="w-full max-w-xl mt-3">
-        <div className="flex items-center justify-between mb-1 px-1">
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-atlas-muted">
-            Step 2 · Server catalog
-          </span>
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-atlas-muted">
-            Optional
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => void openOtbPicker()}
-          disabled={status === "loading"}
-          className={cn(
-            "w-full flex items-center gap-3 rounded border p-3 text-left transition-all",
-            hasOtb
-              ? "border-emerald-700/40 bg-emerald-700/5 hover:bg-emerald-700/10"
-              : "border-atlas-border bg-atlas-paper hover:border-atlas-ink hover:shadow-sm",
-            "disabled:opacity-50 disabled:cursor-not-allowed",
-          )}
-        >
-          <FileText className="h-6 w-6 text-atlas-ink shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-atlas-ink">
-              {hasOtb ? "Re-pick items.otb" : "Open items.otb"}
-            </div>
-            <div className="text-[11px] text-atlas-muted leading-snug">
-              Server-side catalog. Needed only if you want to edit OTB attributes
-              alongside the client-side appearances.
-            </div>
-          </div>
-        </button>
-      </div>
-
-      {hasAnything && (
+      {hasAssets && (
         <div className="mt-4 w-full max-w-xl space-y-3">
           <AssetsPreviewCard />
-          <OtbPreviewCard />
-          {!hasAssets && hasOtb && (
-            <div className="flex items-start gap-2 rounded border border-amber-600/50 bg-amber-600/5 p-3 text-xs">
-              <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-atlas-ink font-medium">No client assets loaded</p>
-                <p className="text-atlas-ink-soft">
-                  You can inspect and edit the OTB itself, but sprites and
-                  appearance flags won't be available. Load the assets folder for
-                  the full experience.
-                </p>
-              </div>
-            </div>
-          )}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -278,7 +188,7 @@ export function Launcher() {
             <button
               type="button"
               onClick={() => void closeWorkspace()}
-              title="Discard the staged files and start over"
+              title="Discard the staged assets and start over"
               className="rounded p-2 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
             >
               <RotateCcw className="h-4 w-4" />
@@ -287,7 +197,7 @@ export function Launcher() {
         </div>
       )}
 
-      {!hasAnything && (recentAssetsPaths.length > 0 || recent.otb.length > 0) && (
+      {!hasAssets && recentAssetsPaths.length > 0 && (
         <section className="mt-5 w-full max-w-xl">
           <h2 className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold mb-1.5">
             Recent
@@ -307,20 +217,6 @@ export function Launcher() {
                 </button>
               </li>
             ))}
-            {recent.otb.slice(0, 3).map((p) => (
-              <li key={`otb-${p}`}>
-                <button
-                  type="button"
-                  onClick={() => void openOtbPath(p)}
-                  title={p}
-                  className="w-full text-left flex items-baseline gap-2 px-2 py-1 rounded hover:bg-atlas-sand"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0 self-center text-atlas-muted" />
-                  <span className="text-atlas-ink shrink-0">{basename(p)}</span>
-                  <span className="text-[11px] text-atlas-muted truncate">{p}</span>
-                </button>
-              </li>
-            ))}
           </ul>
         </section>
       )}
@@ -333,18 +229,7 @@ export function Launcher() {
       )}
 
       <footer className="mt-auto pt-3 text-[10px] text-atlas-muted">
-        Open standalone{" "}
-        <button
-          type="button"
-          onClick={() => {
-            const { openAppearancesPicker } = useWorkspace.getState();
-            void openAppearancesPicker();
-          }}
-          className="underline hover:text-atlas-ink"
-        >
-          appearances.dat
-        </button>{" "}
-        · Phase 6
+        Atlas Editor · Assets
       </footer>
     </main>
   );

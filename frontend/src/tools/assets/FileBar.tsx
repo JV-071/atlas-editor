@@ -74,10 +74,9 @@ export function FileBar() {
   const undo = useWorkspace((s) => s.undo);
   const redo = useWorkspace((s) => s.redo);
   const saveAppearances = useWorkspace((s) => s.saveAppearances);
-  const saveOtb = useWorkspace((s) => s.saveOtb);
   const goToLauncher = useWorkspace((s) => s.goToLauncher);
 
-  const hasAnything = summary.appearancesPath || summary.otbPath;
+  const hasAnything = summary.appearancesPath != null;
 
   // Keyboard shortcuts: Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo, Ctrl+S save
   useEffect(() => {
@@ -93,12 +92,11 @@ export function FileBar() {
       } else if (key === "s") {
         e.preventDefault();
         if (summary.appearancesPath) void saveAppearances();
-        if (summary.otbPath) void saveOtb();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo, saveAppearances, saveOtb, summary.appearancesPath, summary.otbPath]);
+  }, [undo, redo, saveAppearances, summary.appearancesPath]);
 
   return (
     <header className="border-b border-atlas-border bg-atlas-paper px-4 py-2 flex items-center gap-3">
@@ -121,14 +119,9 @@ export function FileBar() {
         {summary.appearancesPath && (
           <span title={summary.appearancesPath}>
             <span className="text-atlas-ink">{basename(summary.appearancesPath)}</span>{" "}
-            <span className="text-atlas-muted">· {summary.objectCount.toLocaleString()} objects</span>
-          </span>
-        )}
-        {summary.appearancesPath && summary.otbPath && <span className="mx-2">·</span>}
-        {summary.otbPath && (
-          <span title={summary.otbPath}>
-            <span className="text-atlas-ink">{basename(summary.otbPath)}</span>{" "}
-            <span className="text-atlas-muted">· {summary.otbItemCount.toLocaleString()} items</span>
+            <span className="text-atlas-muted">
+              · {summary.objectCount.toLocaleString()} objects
+            </span>
           </span>
         )}
         {status === "loading" && <span className="text-amber-700 ml-2">loading…</span>}
@@ -159,7 +152,7 @@ export function FileBar() {
           <button
             type="button"
             onClick={() => void saveAppearances()}
-            title="Save appearances.dat (Ctrl+S also saves both)"
+            title="Save appearances.dat (Ctrl+S)"
             className={cn(
               "ml-1 inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
               summary.dirty
@@ -168,23 +161,7 @@ export function FileBar() {
             )}
           >
             <Save className="h-3.5 w-3.5" />
-            .dat
-          </button>
-        )}
-        {summary.otbPath && (
-          <button
-            type="button"
-            onClick={() => void saveOtb()}
-            title="Save items.otb"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
-              summary.dirty
-                ? "bg-amber-600 text-atlas-cream hover:bg-amber-700"
-                : "border border-atlas-border text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand",
-            )}
-          >
-            <Save className="h-3.5 w-3.5" />
-            .otb
+            Save
           </button>
         )}
 

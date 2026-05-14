@@ -1,12 +1,13 @@
-import { FileText, Package, Sparkles, Target, User, type LucideIcon } from "lucide-react";
+import { Package, Sparkles, Target, User, type LucideIcon } from "lucide-react";
 
 import { useWorkspace } from "./store";
-import type { Category } from "./types";
+import type { Category, WorkspaceSummary } from "./types";
 import { cn } from "../../shared/utils";
 
 interface TabDef {
   id: Category;
   label: string;
+  count: keyof WorkspaceSummary;
   icon: LucideIcon;
   /// Tailwind text/border/bg color tokens for this tab's accent.
   iconClass: string;
@@ -14,10 +15,11 @@ interface TabDef {
   activeBgClass: string;
 }
 
-const APPEARANCE_TABS: TabDef[] = [
+const TABS: TabDef[] = [
   {
     id: "object",
     label: "Objects",
+    count: "objectCount",
     icon: Package,
     iconClass: "text-amber-700",
     activeBorderClass: "border-amber-700",
@@ -26,6 +28,7 @@ const APPEARANCE_TABS: TabDef[] = [
   {
     id: "outfit",
     label: "Outfits",
+    count: "outfitCount",
     icon: User,
     iconClass: "text-sky-700",
     activeBorderClass: "border-sky-700",
@@ -34,6 +37,7 @@ const APPEARANCE_TABS: TabDef[] = [
   {
     id: "effect",
     label: "Effects",
+    count: "effectCount",
     icon: Sparkles,
     iconClass: "text-fuchsia-700",
     activeBorderClass: "border-fuchsia-700",
@@ -42,6 +46,7 @@ const APPEARANCE_TABS: TabDef[] = [
   {
     id: "missile",
     label: "Missiles",
+    count: "missileCount",
     icon: Target,
     iconClass: "text-rose-700",
     activeBorderClass: "border-rose-700",
@@ -49,50 +54,16 @@ const APPEARANCE_TABS: TabDef[] = [
   },
 ];
 
-const OTB_TAB: TabDef = {
-  id: "otb",
-  label: "OTB",
-  icon: FileText,
-  iconClass: "text-emerald-700",
-  activeBorderClass: "border-emerald-700",
-  activeBgClass: "bg-emerald-700/10",
-};
-
-function countFor(id: Category, summary: ReturnType<typeof useWorkspace.getState>["summary"]): number {
-  switch (id) {
-    case "object":
-      return summary.objectCount;
-    case "outfit":
-      return summary.outfitCount;
-    case "effect":
-      return summary.effectCount;
-    case "missile":
-      return summary.missileCount;
-    case "otb":
-      return summary.otbItemCount;
-  }
-}
-
 export function Tabs() {
   const active = useWorkspace((s) => s.category);
   const summary = useWorkspace((s) => s.summary);
   const setCategory = useWorkspace((s) => s.setCategory);
 
-  const tabs = [
-    ...APPEARANCE_TABS.filter(() => summary.appearancesPath != null),
-    ...(summary.otbPath != null ? [OTB_TAB] : []),
-  ];
-
-  // Fallback: if nothing loaded the launcher should be in charge,
-  // but just in case render the appearance set so the layout doesn't
-  // collapse.
-  const displayTabs = tabs.length > 0 ? tabs : APPEARANCE_TABS;
-
   return (
     <div className="flex border-b border-atlas-border bg-atlas-paper">
-      {displayTabs.map((tab) => {
+      {TABS.map((tab) => {
         const isActive = tab.id === active;
-        const count = countFor(tab.id, summary);
+        const count = summary[tab.count] as number;
         const Icon = tab.icon;
         return (
           <button
@@ -133,5 +104,4 @@ export const CATEGORY_META: Record<
   outfit: { icon: User, iconClass: "text-sky-700", textClass: "text-sky-700" },
   effect: { icon: Sparkles, iconClass: "text-fuchsia-700", textClass: "text-fuchsia-700" },
   missile: { icon: Target, iconClass: "text-rose-700", textClass: "text-rose-700" },
-  otb: { icon: FileText, iconClass: "text-emerald-700", textClass: "text-emerald-700" },
 };

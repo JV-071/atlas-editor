@@ -1,45 +1,24 @@
 import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, GitMerge, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 import { useWorkspace } from "./store";
-import type { AppearanceRow, OtbItemRowDto } from "./types";
+import type { AppearanceRow } from "./types";
 import { cn } from "../../shared/utils";
 
 const ROW_HEIGHT = 32;
 
-/// Stable empty-row reference. Returning `[]` inline from a Zustand
-/// selector creates a fresh array on every store update, which trips
-/// the v5 strict-equality check and triggers an infinite re-render
-/// loop ("getSnapshot should be cached" warning).
-const EMPTY_APPEARANCE_ROWS: AppearanceRow[] = [];
-
-function matchesAppearance(row: AppearanceRow, needle: string): boolean {
+function matches(row: AppearanceRow, needle: string): boolean {
   if (!needle) return true;
   const lc = needle.toLowerCase();
   if (String(row.id).includes(lc)) return true;
   if (row.name && row.name.toLowerCase().includes(lc)) return true;
-  if (row.otbServerId != null && String(row.otbServerId).includes(lc)) return true;
-  return false;
-}
-
-function matchesOtb(row: OtbItemRowDto, needle: string): boolean {
-  if (!needle) return true;
-  const lc = needle.toLowerCase();
-  if (String(row.serverId).includes(lc)) return true;
-  if (row.clientId != null && String(row.clientId).includes(lc)) return true;
-  if (row.name && row.name.toLowerCase().includes(lc)) return true;
-  if (row.group.toLowerCase().includes(lc)) return true;
   return false;
 }
 
 export function ItemList() {
   const category = useWorkspace((s) => s.category);
-  const appearanceRows = useWorkspace((s) =>
-    s.category !== "otb" ? s.rowsByCategory[s.category] : EMPTY_APPEARANCE_ROWS,
-  );
-  const otbRows = useWorkspace((s) => s.otbRows);
-  const otbLoaded = useWorkspace((s) => s.summary.otbPath !== null);
+  const rows = useWorkspace((s) => s.rowsByCategory[s.category]);
   const appearancesLoaded = useWorkspace((s) => s.summary.appearancesPath !== null);
   const query = useWorkspace((s) => s.query);
   const setQuery = useWorkspace((s) => s.setQuery);
@@ -47,16 +26,10 @@ export function ItemList() {
   const setSelected = useWorkspace((s) => s.setSelected);
   const createObjectAppearance = useWorkspace((s) => s.createObjectAppearance);
 
-  const isOtb = category === "otb";
-  const filtered = useMemo(() => {
-    if (isOtb) {
-      return query ? otbRows.filter((r) => matchesOtb(r, query)) : otbRows;
-    }
-    return query
-      ? appearanceRows.filter((r) => matchesAppearance(r, query))
-      : appearanceRows;
-  }, [isOtb, otbRows, appearanceRows, query]);
-  const totalCount = isOtb ? otbRows.length : appearanceRows.length;
+  const filtered = useMemo(
+    () => (query ? rows.filter((row) => matches(row, query)) : rows),
+    [rows, query],
+  );
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -66,8 +39,6 @@ export function ItemList() {
     overscan: 16,
   });
 
-  const showOtbColumn = category === "object" && otbLoaded;
-
   return (
     <div className="flex flex-col h-full border-r border-atlas-border bg-atlas-paper">
       <div className="p-2 border-b border-atlas-border flex items-center gap-2">
@@ -76,12 +47,12 @@ export function ItemList() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={isOtb ? "Filter by id, name, group…" : "Filter by id or name…"}
+          placeholder="Filter by id or name…"
           className="flex-1 bg-transparent text-sm text-atlas-ink focus:outline-none placeholder:text-atlas-muted"
         />
         <span className="text-xs text-atlas-muted tabular-nums">
           {filtered.length.toLocaleString()}
-          {filtered.length !== totalCount && <> / {totalCount.toLocaleString()}</>}
+          {filtered.length !== rows.length && <> / {rows.length.toLocaleString()}</>}
         </span>
         {category === "object" && appearancesLoaded && (
           <button
@@ -95,13 +66,11 @@ export function ItemList() {
         )}
       </div>
 
-      {totalCount === 0 ? (
+      {rows.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-sm text-atlas-muted px-6 text-center">
-          {isOtb
-            ? "No items.otb loaded. Go back to the launcher to open one."
-            : !appearancesLoaded
-              ? "No appearances loaded. Go back to the launcher to open an assets bundle."
-              : `No ${category}s in this file.`}
+          {!appearancesLoaded
+            ? "No assets loaded. Go back to the launcher to open a bundle."
+            : `No ${category}s in this file.`}
         </div>
       ) : (
         <div ref={parentRef} className="flex-1 overflow-auto">
@@ -114,15 +83,12 @@ export function ItemList() {
           >
             {virtualizer.getVirtualItems().map((vrow) => {
               const row = filtered[vrow.index];
-              const rowId = isOtb
-                ? (row as OtbItemRowDto).serverId
-                : (row as AppearanceRow).id;
-              const selected = rowId === selectedId;
+              const selected = row.id === selectedId;
               return (
                 <button
-                  key={rowId}
+                  key={row.id}
                   type="button"
-                  onClick={() => void setSelected(rowId)}
+                  onClick={() => void setSelected(row.id)}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -139,15 +105,35 @@ export function ItemList() {
                       : "text-atlas-ink",
                   )}
                 >
-                  {isOtb ? (
-                    <OtbRowContent row={row as OtbItemRowDto} selected={selected} />
-                  ) : (
-                    <AppearanceRowContent
-                      row={row as AppearanceRow}
-                      selected={selected}
-                      showOtbColumn={showOtbColumn}
-                    />
-                  )}
+                  <span
+                    className={cn(
+                      "w-14 shrink-0 text-right font-mono text-xs tabular-nums",
+                      selected ? "text-atlas-cream/80" : "text-atlas-muted",
+                    )}
+                  >
+                    {row.id}
+                  </span>
+                  <span className="flex-1 truncate">
+                    {row.name ?? (
+                      <span
+                        className={cn(
+                          "italic",
+                          selected ? "text-atlas-cream/70" : "text-atlas-muted",
+                        )}
+                      >
+                        (unnamed)
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs tabular-nums",
+                      selected ? "text-atlas-cream/70" : "text-atlas-muted",
+                    )}
+                    title={`${row.spriteCount} sprite(s)`}
+                  >
+                    {row.spriteCount}s
+                  </span>
                 </button>
               );
             })}
@@ -155,129 +141,5 @@ export function ItemList() {
         </div>
       )}
     </div>
-  );
-}
-
-function AppearanceRowContent({
-  row,
-  selected,
-  showOtbColumn,
-}: {
-  row: AppearanceRow;
-  selected: boolean;
-  showOtbColumn: boolean;
-}) {
-  return (
-    <>
-      <span
-        className={cn(
-          "w-14 shrink-0 text-right font-mono text-xs tabular-nums",
-          selected ? "text-atlas-cream/80" : "text-atlas-muted",
-        )}
-      >
-        {row.id}
-      </span>
-      <span className="flex-1 truncate">
-        {row.name ?? (
-          <span
-            className={cn(
-              "italic",
-              selected ? "text-atlas-cream/70" : "text-atlas-muted",
-            )}
-          >
-            (unnamed)
-          </span>
-        )}
-      </span>
-
-      {showOtbColumn && (
-        <>
-          {row.hasOtbCollision && (
-            <GitMerge
-              className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-atlas-cream" : "text-rose-700")}
-              aria-label="Multiple OTB items map to this appearance"
-            />
-          )}
-          {row.isAppearanceOrphan && (
-            <AlertTriangle
-              className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-atlas-cream" : "text-amber-600")}
-              aria-label="No OTB entry for this appearance"
-            />
-          )}
-          {row.otbServerId != null && (
-            <span
-              className={cn(
-                "shrink-0 text-xs font-mono tabular-nums",
-                selected ? "text-atlas-cream" : "text-emerald-700",
-              )}
-              title="OTB server_id"
-            >
-              #{row.otbServerId}
-            </span>
-          )}
-        </>
-      )}
-
-      <span
-        className={cn(
-          "shrink-0 text-xs tabular-nums",
-          selected ? "text-atlas-cream/70" : "text-atlas-muted",
-        )}
-        title={`${row.spriteCount} sprite(s)`}
-      >
-        {row.spriteCount}s
-      </span>
-    </>
-  );
-}
-
-function OtbRowContent({ row, selected }: { row: OtbItemRowDto; selected: boolean }) {
-  return (
-    <>
-      <span
-        className={cn(
-          "w-14 shrink-0 text-right font-mono text-xs tabular-nums",
-          selected ? "text-atlas-cream/80" : "text-emerald-700",
-        )}
-        title="OTB server_id"
-      >
-        #{row.serverId}
-      </span>
-      <span className="flex-1 truncate">
-        {row.name ?? (
-          <span
-            className={cn(
-              "italic",
-              selected ? "text-atlas-cream/70" : "text-atlas-muted",
-            )}
-          >
-            (unnamed)
-          </span>
-        )}
-      </span>
-      <span
-        className={cn(
-          "shrink-0 text-[10px] uppercase tracking-wide",
-          selected ? "text-atlas-cream/70" : "text-atlas-muted",
-        )}
-      >
-        {row.group}
-      </span>
-      {row.clientId != null && (
-        <span
-          className={cn(
-            "shrink-0 text-xs font-mono tabular-nums",
-            selected ? "text-atlas-cream/80" : row.hasAppearanceMatch ? "text-atlas-muted" : "text-amber-700",
-          )}
-          title={
-            row.hasAppearanceMatch
-              ? `client_id ${row.clientId} (appearance match)`
-              : `client_id ${row.clientId} (no appearance match)`
-          }
-        >
-          c{row.clientId}
-        </span>
-      )}
-    </>
   );
 }

@@ -28,7 +28,9 @@ function Editor() {
         </span>
         <span>
           {summary.objectCount.toLocaleString()} objects ·{" "}
-          {summary.otbItemCount.toLocaleString()} otb items
+          {summary.outfitCount.toLocaleString()} outfits ·{" "}
+          {summary.effectCount.toLocaleString()} effects ·{" "}
+          {summary.missileCount.toLocaleString()} missiles
         </span>
       </footer>
     </div>
@@ -55,10 +57,7 @@ export function AssetsEditor() {
         refreshPixelFormat(),
       ]);
       const summary = useWorkspace.getState().summary;
-      const hasState =
-        summary.appearancesPath != null ||
-        summary.otbPath != null ||
-        summary.objectCount > 0;
+      const hasState = summary.appearancesPath != null || summary.objectCount > 0;
       if (hasState) await enterEditor();
     })().catch(() => {
       // Initial load failures shouldn't break the launcher.

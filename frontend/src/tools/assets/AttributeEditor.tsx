@@ -2,15 +2,11 @@ import { useMemo } from "react";
 
 import { useWorkspace } from "./store";
 import {
-  ITEM_GROUPS,
   VOCATIONS,
   WEAPON_TYPES,
   readAssetId,
   type AppearanceFlagsDto,
   type AppearanceInfoDto,
-  type ItemGroupEnum,
-  type OtbItemDto,
-  type OtbItemFlagsDto,
   type Vocation,
   type WeaponType,
 } from "./types";
@@ -273,91 +269,6 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
   );
 }
 
-function OtbSection({ item }: { item: OtbItemDto }) {
-  const update = useWorkspace((s) => s.updateOtbItemField);
-  const flags: OtbItemFlagsDto = item.flags;
-
-  return (
-    <div className="space-y-5">
-      <Section title="OTB identity">
-        <Field label="server_id">
-          <NumberInput value={item.serverId} nullable={false} onCommit={() => {}} />
-        </Field>
-        <Field label="client_id">
-          <NumberInput value={item.clientId} nullable={false} onCommit={() => {}} />
-        </Field>
-        <Field label="name">
-          <TextInput value={item.name} onCommit={(v) => void update("name", v)} />
-        </Field>
-        <Field label="speed">
-          <NumberInput
-            value={item.speed}
-            min={0}
-            onCommit={(v) => void update("speed", v)}
-          />
-        </Field>
-        <Field label="group">
-          <Select<ItemGroupEnum>
-            value={item.group}
-            options={ITEM_GROUPS}
-            nullable={false}
-            onCommit={(v) => v && void update("group", v)}
-          />
-        </Field>
-      </Section>
-
-      <Section title="Tile / movement flags">
-        {OTB_BOOL_FIELDS.map(([label, dtoKey, fieldPath]) => (
-          <Field key={dtoKey} label={label}>
-            <Toggle
-              value={Boolean(flags[dtoKey])}
-              onCommit={(v) => void update(`flags.${fieldPath}`, v)}
-            />
-          </Field>
-        ))}
-      </Section>
-
-      <Section title="Atlas extensions">
-        <Field label="weapon_type">
-          <Select<WeaponType>
-            value={item.weaponType}
-            options={WEAPON_TYPES}
-            onCommit={(v) => void update("weapon_type", v)}
-          />
-        </Field>
-        <Field label="minimum_level">
-          <NumberInput
-            value={item.minimumLevel}
-            min={0}
-            onCommit={(v) => void update("minimum_level", v)}
-          />
-        </Field>
-        <Field label="imbuement_slots">
-          <NumberInput
-            value={item.imbuementSlots}
-            min={0}
-            max={255}
-            onCommit={(v) => void update("imbuement_slots", v)}
-          />
-        </Field>
-        <Field label="dual_wielding">
-          <Toggle
-            value={item.dualWielding ?? false}
-            onCommit={(v) => void update("dual_wielding", v)}
-          />
-        </Field>
-        <div className="col-span-2">
-          <Field label="vocations">
-            <VocationPicker
-              value={item.vocations}
-              onCommit={(v) => void update("vocations", v)}
-            />
-          </Field>
-        </div>
-      </Section>
-    </div>
-  );
-}
 
 // Each row: [display label, DTO key (camelCase), backend field path
 // (snake_case)]. The triple keeps the form schema next to both the
@@ -386,57 +297,10 @@ const APPEARANCE_BOOL_FIELDS: [string, keyof AppearanceFlagsDto, string][] = [
   ["player_corpse", "playerCorpse", "player_corpse"],
 ];
 
-const OTB_BOOL_FIELDS: [string, keyof OtbItemFlagsDto, string][] = [
-  ["block_solid", "blockSolid", "block_solid"],
-  ["block_projectile", "blockProjectile", "block_projectile"],
-  ["block_pathfind", "blockPathfind", "block_pathfind"],
-  ["has_height", "hasHeight", "has_height"],
-  ["useable", "useable", "useable"],
-  ["pickupable", "pickupable", "pickupable"],
-  ["movable", "movable", "movable"],
-  ["stackable", "stackable", "stackable"],
-  ["rotatable", "rotatable", "rotatable"],
-  ["hangable", "hangable", "hangable"],
-  ["always_on_top", "alwaysOnTop", "always_on_top"],
-  ["readable", "readable", "readable"],
-  ["allow_dist_read", "allowDistRead", "allow_dist_read"],
-  ["look_through", "lookThrough", "look_through"],
-  ["animation", "animation", "animation"],
-  ["force_use", "forceUse", "force_use"],
-];
-
-function CreateOtbLink() {
-  const otbLoaded = useWorkspace((s) => s.summary.otbPath !== null);
-  const createLinkedOtbItem = useWorkspace((s) => s.createLinkedOtbItem);
-  if (!otbLoaded) {
-    return (
-      <p className="text-xs text-atlas-muted italic">
-        No OTB entry linked. Open an <code>items.otb</code> file to edit the
-        server-side attributes.
-      </p>
-    );
-  }
-  return (
-    <div className="flex items-center justify-between gap-3 p-3 border border-atlas-border rounded bg-atlas-paper">
-      <p className="text-xs text-atlas-muted">
-        No OTB item references this appearance.
-      </p>
-      <button
-        type="button"
-        onClick={() => void createLinkedOtbItem()}
-        className="rounded px-2.5 py-1 text-xs font-medium bg-atlas-ink text-atlas-cream hover:bg-atlas-ink-soft"
-      >
-        Create linked OTB item
-      </button>
-    </div>
-  );
-}
-
 export function AttributeEditor() {
   const selectedId = useWorkspace((s) => s.selectedId);
   const category = useWorkspace((s) => s.category);
   const appearance = useWorkspace((s) => s.selectedAppearance);
-  const otbItem = useWorkspace((s) => s.selectedOtbItem);
   const error = useWorkspace((s) => s.error);
 
   const meta = CATEGORY_META[category];
@@ -452,55 +316,6 @@ export function AttributeEditor() {
     return (
       <div className="flex-1 flex items-center justify-center text-atlas-muted text-sm">
         Select an item from the list to inspect it.
-      </div>
-    );
-  }
-
-  // OTB-only view: appearance can legitimately be `null` (the item has
-  // no matching client_id, or appearances aren't loaded at all). Render
-  // just the OTB section.
-  if (category === "otb") {
-    if (!otbItem) {
-      return (
-        <div className="flex-1 flex items-center justify-center text-atlas-muted text-sm">
-          Loading…
-        </div>
-      );
-    }
-    return (
-      <div className="flex-1 overflow-auto">
-        <div className="p-6 space-y-6 max-w-3xl">
-          <header className="flex items-center gap-3 pb-3 border-b border-atlas-border">
-            <Icon className={cn("h-6 w-6 shrink-0", meta.iconClass)} />
-            <div className="min-w-0">
-              <h2 className="text-xl font-semibold truncate">
-                {otbItem.name ?? <span className="italic text-atlas-muted">(unnamed)</span>}
-              </h2>
-              <p className="text-xs text-atlas-muted font-mono">
-                <span className={meta.textClass}>otb</span> · server_id {otbItem.serverId}
-                {otbItem.clientId != null && <> · client_id {otbItem.clientId}</>}
-                {appearance && <> · appearance match ✓</>}
-              </p>
-            </div>
-          </header>
-
-          {error && (
-            <div className="px-3 py-2 rounded bg-rose-100 border border-rose-300 text-sm text-rose-900">
-              {error}
-            </div>
-          )}
-
-          {appearance && (
-            <section className="space-y-2">
-              <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold">
-                Sprites (from matched appearance)
-              </h3>
-              <SpritePreview spriteIds={appearance.spriteIds} />
-            </section>
-          )}
-
-          <OtbSection item={otbItem} />
-        </div>
       </div>
     );
   }
@@ -527,7 +342,6 @@ export function AttributeEditor() {
             <p className="text-xs text-atlas-muted font-mono">
               <span className={meta.textClass}>{category}</span>
               {" · "}id {headerInfo?.id}
-              {otbItem?.serverId != null && <> · otb server_id {otbItem.serverId}</>}
               {" · "}
               {appearance.spriteIds.length} sprite(s)
             </p>
@@ -548,17 +362,6 @@ export function AttributeEditor() {
         </section>
 
         <AppearanceSection appearance={appearance} />
-
-        {otbItem && (
-          <>
-            <hr className="border-atlas-border" />
-            <OtbSection item={otbItem} />
-          </>
-        )}
-
-        {!otbItem && category === "object" && (
-          <CreateOtbLink />
-        )}
       </div>
     </div>
   );
