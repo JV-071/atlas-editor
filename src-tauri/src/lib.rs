@@ -46,6 +46,7 @@ pub fn run() {
             commands::save_appearances,
             commands::save_otb,
             commands::set_assets_dir,
+            commands::open_assets_bundle,
             commands::get_assets_dir_info,
             commands::get_sprite_png,
             commands::set_sprite_pixel_format,

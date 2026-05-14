@@ -598,6 +598,72 @@ pub fn set_assets_dir(
     Ok(info)
 }
 
+/// One-shot launcher action: pick an assets directory, load both the
+/// sprite atlas and the appearances.dat referenced in
+/// `catalog-content.json`. Returns the resulting workspace summary +
+/// assets info so the UI can transition straight into the editor.
+#[tauri::command]
+pub fn open_assets_bundle(
+    path: String,
+    app: AppHandle,
+    state: State<'_, SharedWorkspace>,
+) -> Result<AssetsBundleResult, String> {
+    let atlas = Atlas::from_assets_dir(&path).map_err(|e| e.to_string())?;
+    let appearances_file = atlas.catalog().appearances_file.clone();
+    let assets_path = PathBuf::from(&path);
+
+    let appearances_path = appearances_file
+        .as_ref()
+        .map(|name| assets_path.join(name));
+    let appearances = match appearances_path.as_ref() {
+        Some(p) => Some(Appearances::load_from_file(p).map_err(|e| e.to_string())?),
+        None => None,
+    };
+
+    let sheet_count = atlas.catalog().sheets.len();
+    let sprite_id_range = atlas
+        .catalog()
+        .sheets
+        .first()
+        .map(|s| s.firstspriteid)
+        .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid));
+
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    guard.atlas = Some(atlas);
+    guard.assets_dir = Some(assets_path);
+    if let Some(parsed) = appearances {
+        guard.workspace.appearances = Some(parsed);
+        if let Some(p) = appearances_path {
+            let path_str = p.display().to_string();
+            guard.appearances_path = Some(p);
+            guard.recent.record_appearances(path_str);
+            guard.recent.save(&app);
+        }
+        guard.history.clear();
+        guard.future.clear();
+        guard.dirty = false;
+    }
+
+    let assets = AssetsDirInfo {
+        path,
+        sheet_count,
+        sprite_id_range,
+    };
+    Ok(AssetsBundleResult {
+        summary: guard.summary(),
+        assets,
+        appearances_loaded: appearances_file.is_some(),
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetsBundleResult {
+    pub summary: WorkspaceSummary,
+    pub assets: AssetsDirInfo,
+    pub appearances_loaded: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetsDirInfo {

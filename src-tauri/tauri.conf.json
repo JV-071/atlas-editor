@@ -13,12 +13,13 @@
     "windows": [
       {
         "title": "Atlas Assets Editor",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
+        "width": 640,
+        "height": 480,
+        "minWidth": 480,
+        "minHeight": 360,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "center": true
       }
     ],
     "security": {

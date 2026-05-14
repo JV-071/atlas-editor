@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FileText,
   FolderOpen,
+  Home,
   Image as ImageIcon,
   Redo2,
   Save,
@@ -97,6 +98,7 @@ export function FileBar() {
   const assetsDir = useWorkspace((s) => s.assetsDir);
   const pixelFormat = useWorkspace((s) => s.pixelFormat);
   const cyclePixelFormat = useWorkspace((s) => s.cyclePixelFormat);
+  const goToLauncher = useWorkspace((s) => s.goToLauncher);
 
   const hasAnything = summary.appearancesPath || summary.otbPath;
 
@@ -123,6 +125,15 @@ export function FileBar() {
 
   return (
     <header className="border-b border-atlas-border bg-atlas-paper px-4 py-3 flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => void goToLauncher()}
+        title="Back to launcher"
+        className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+      >
+        <Home className="h-4 w-4" />
+      </button>
+
       <div className="inline-flex rounded overflow-hidden">
         <button
           type="button"

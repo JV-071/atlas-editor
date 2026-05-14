@@ -200,5 +200,11 @@ export interface AssetsDirInfo {
   spriteIdRange: [number, number] | null;
 }
 
+export interface AssetsBundleResult {
+  summary: WorkspaceSummary;
+  assets: AssetsDirInfo;
+  appearancesLoaded: boolean;
+}
+
 export type PixelFormat = "bgra" | "rgba" | "argb" | "abgr";
 export const PIXEL_FORMATS: PixelFormat[] = ["bgra", "rgba", "argb", "abgr"];

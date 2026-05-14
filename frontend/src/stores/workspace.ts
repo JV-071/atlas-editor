@@ -30,6 +30,7 @@ import {
   emptySummary,
   type AppearanceInfoDto,
   type AppearanceRow,
+  type AssetsBundleResult,
   type AssetsDirInfo,
   type Category,
   type OtbItemDto,
@@ -38,9 +39,12 @@ import {
   type WorkspaceSummary,
 } from "../types";
 
+export type AppView = "launcher" | "editor";
+
 type LoadStatus = "idle" | "loading" | "error";
 
 interface WorkspaceState {
+  view: AppView;
   summary: WorkspaceSummary;
   rowsByCategory: Record<Category, AppearanceRow[]>;
   category: Category;
@@ -78,8 +82,12 @@ interface WorkspaceState {
   saveOtb: () => Promise<void>;
 
   pickAssetsDir: () => Promise<void>;
+  pickAssetsBundle: () => Promise<void>;
+  openAssetsBundlePath: (path: string) => Promise<void>;
   refreshAssetsDirInfo: () => Promise<void>;
   fetchSpritePng: (spriteId: number) => Promise<string | null>;
+  enterEditor: () => Promise<void>;
+  goToLauncher: () => Promise<void>;
   pixelFormat: PixelFormat;
   spriteCacheBust: number;
   cyclePixelFormat: () => Promise<void>;
@@ -115,7 +123,28 @@ async function fetchAllCategories(): Promise<Record<Category, AppearanceRow[]>> 
   return Object.fromEntries(results) as Record<Category, AppearanceRow[]>;
 }
 
+/// Resize the current Tauri window between the compact launcher and
+/// the full editor footprint. Falls back to a no-op when the API is
+/// unavailable (e.g. running in a plain browser preview).
+async function resizeWindow(view: AppView): Promise<void> {
+  try {
+    const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    if (view === "editor") {
+      await win.setMinSize(new LogicalSize(900, 600));
+      await win.setSize(new LogicalSize(1280, 800));
+    } else {
+      await win.setMinSize(new LogicalSize(480, 360));
+      await win.setSize(new LogicalSize(640, 480));
+    }
+    await win.center();
+  } catch {
+    // Ignore — we're probably not inside the Tauri shell.
+  }
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
+  view: "launcher",
   summary: emptySummary,
   rowsByCategory: emptyRowsByCategory,
   category: "object",
@@ -164,6 +193,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const summary = await invoke<WorkspaceSummary>("open_appearances", { path });
       set({ summary, status: "idle" });
       await Promise.all([get().refreshRows(), get().refreshRecent()]);
+      if (get().view === "launcher") await get().enterEditor();
     } catch (e) {
       set({ status: "error", error: String(e) });
     }
@@ -179,6 +209,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await Promise.all(tasks);
       // If something was already selected, refresh the linked OTB side.
       if (get().selectedId != null) await get().refreshSelectedDetails();
+      if (get().view === "launcher") await get().enterEditor();
     } catch (e) {
       set({ status: "error", error: String(e) });
     }
@@ -326,6 +357,44 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     }
+  },
+
+  async pickAssetsBundle() {
+    const selected = await openDialog({
+      title: "Pick the Tibia client assets/ directory",
+      multiple: false,
+      directory: true,
+    });
+    if (!selected) return;
+    const path = Array.isArray(selected) ? selected[0] : selected;
+    if (!path) return;
+    await get().openAssetsBundlePath(path);
+  },
+
+  async openAssetsBundlePath(path) {
+    set({ status: "loading", error: null });
+    try {
+      const result = await invoke<AssetsBundleResult>("open_assets_bundle", { path });
+      set({ summary: result.summary, assetsDir: result.assets, status: "idle" });
+      if (result.appearancesLoaded) {
+        await Promise.all([get().refreshRows(), get().refreshRecent()]);
+      } else {
+        await get().refreshRecent();
+      }
+      await get().enterEditor();
+    } catch (e) {
+      set({ status: "error", error: String(e) });
+    }
+  },
+
+  async enterEditor() {
+    await resizeWindow("editor");
+    set({ view: "editor" });
+  },
+
+  async goToLauncher() {
+    await resizeWindow("launcher");
+    set({ view: "launcher", selectedId: null, selectedAppearance: null, selectedOtbItem: null });
   },
 
   async fetchSpritePng(spriteId) {
