@@ -73,6 +73,10 @@ pub struct AppearanceRow {
     pub id: u32,
     pub name: Option<String>,
     pub sprite_count: usize,
+    /// First sprite id of the flattened list, used as the thumbnail
+    /// in the row. `None` when the appearance has no sprite_ids at
+    /// all (rare in practice — usually a placeholder slot).
+    pub first_sprite_id: Option<u32>,
     pub otb_server_id: Option<u16>,
     pub is_appearance_orphan: bool,
     pub has_otb_collision: bool,
@@ -556,6 +560,7 @@ pub fn list_appearances(
                 id: app.id.0,
                 name: app.name.clone(),
                 sprite_count: app.sprite_ids.len(),
+                first_sprite_id: app.sprite_ids.first().copied(),
                 otb_server_id,
                 is_appearance_orphan,
                 has_otb_collision,

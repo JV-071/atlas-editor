@@ -48,6 +48,10 @@ export interface AppearanceRow {
   id: number;
   name: string | null;
   spriteCount: number;
+  /// First sprite_id of the flattened sprite list. Used as the
+  /// row thumbnail; `null` for placeholder appearances with no
+  /// sprites attached.
+  firstSpriteId: number | null;
 }
 
 export interface RecentFiles {

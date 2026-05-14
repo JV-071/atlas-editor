@@ -1,29 +1,15 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ImageOff, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
+import { SpriteThumb } from "./SpriteThumb";
 import { useWorkspace } from "./store";
 import type { SpriteRangeDto } from "./types";
-import { cn } from "../../shared/utils";
 
 const TILE_PIXELS = 64; // sprite image footprint
 const LABEL_GAP = 22; // id label height + gap underneath
 const COL_GAP = 12; // horizontal padding between tiles
 const ROW_GAP = 12; // vertical padding between rows
-
-/// Module-level data URL cache for sprite tiles. Survives across
-/// tile mount/unmount cycles (the virtualizer thrashes them on every
-/// scroll), so re-visiting a sprite is a synchronous lookup with no
-/// IPC at all. The backend has its own PNG cache too — this one's
-/// purpose is purely to skip the IPC round-trip on re-mount.
-///
-/// Cleared from `clearSpriteUrlCache` when the user opens a new
-/// assets bundle (sprite_ids may now point at different pixels).
-const SPRITE_URL_CACHE = new Map<number, string>();
-
-export function clearSpriteUrlCache(): void {
-  SPRITE_URL_CACHE.clear();
-}
 
 /// Walk the catalog's per-sheet ranges and emit the i-th sprite id, or
 /// null when the index is past the end. The ranges are sorted in the
@@ -59,76 +45,14 @@ function filteredIds(ranges: SpriteRangeDto[], query: string): number[] | null {
   return out;
 }
 
-/// Lazy per-tile renderer. The first time a sprite is requested we
-/// pay one IPC round-trip; the URL is then stashed in the module-level
-/// `SPRITE_URL_CACHE` and returned synchronously on every later mount.
-/// Without this cache the virtualizer's mount/unmount churn during a
-/// fast scroll would re-issue thousands of redundant IPC calls.
-///
-/// Wrapped in `memo` so the virtual row's re-renders during scroll
-/// don't push fresh props down to every visible tile.
-const SpriteTile = memo(function SpriteTile({ id }: { id: number }) {
-  const fetchSpritePng = useWorkspace((s) => s.fetchSpritePng);
-  const cacheBust = useWorkspace((s) => s.spriteCacheBust);
-  const [url, setUrl] = useState<string | null>(() => SPRITE_URL_CACHE.get(id) ?? null);
-  const [errored, setErrored] = useState(false);
-
-  useEffect(() => {
-    // Fast path: cached. The state initializer already populated
-    // `url`, so we just skip the fetch.
-    const cached = SPRITE_URL_CACHE.get(id);
-    if (cached) {
-      setUrl(cached);
-      setErrored(false);
-      return;
-    }
-    let cancelled = false;
-    setUrl(null);
-    setErrored(false);
-    fetchSpritePng(id)
-      .then((u) => {
-        if (cancelled) return;
-        if (u) {
-          SPRITE_URL_CACHE.set(id, u);
-          setUrl(u);
-        } else {
-          setErrored(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setErrored(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, fetchSpritePng, cacheBust]);
-
+function SpriteTile({ id }: { id: number }) {
   return (
-    <div
-      className="flex flex-col items-center gap-1"
-      title={`sprite_id ${id}`}
-    >
-      <div
-        className={cn(
-          "w-16 h-16 rounded border border-atlas-border bg-atlas-paper flex items-center justify-center overflow-hidden",
-          !url && !errored && "animate-pulse",
-        )}
-      >
-        {url ? (
-          <img
-            src={url}
-            alt={`sprite ${id}`}
-            className="max-w-full max-h-full"
-            style={{ imageRendering: "pixelated" }}
-          />
-        ) : (
-          <ImageOff className="h-5 w-5 text-atlas-muted/60" />
-        )}
-      </div>
+    <div className="flex flex-col items-center gap-1" title={`sprite_id ${id}`}>
+      <SpriteThumb id={id} size={64} />
       <span className="text-[10px] text-atlas-muted font-mono tabular-nums">{id}</span>
     </div>
   );
-});
+}
 
 export function SpriteGrid() {
   const spriteRanges = useWorkspace((s) => s.spriteRanges);

@@ -3,11 +3,13 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Plus, Search } from "lucide-react";
 
 import { SpriteGrid } from "./SpriteGrid";
+import { SpriteThumb } from "./SpriteThumb";
 import { useWorkspace } from "./store";
 import type { AppearanceCategory, AppearanceRow } from "./types";
 import { cn } from "../../shared/utils";
 
-const ROW_HEIGHT = 32;
+const ROW_HEIGHT = 48;
+const THUMB_SIZE = 36;
 
 function matches(row: AppearanceRow, needle: string): boolean {
   if (!needle) return true;
@@ -113,7 +115,7 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                     transform: `translateY(${vrow.start}px)`,
                   }}
                   className={cn(
-                    "flex items-center gap-3 px-3 text-left text-sm transition-colors",
+                    "flex items-center gap-2 px-2 text-left text-sm transition-colors",
                     "hover:bg-atlas-sand",
                     selected
                       ? "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink"
@@ -122,12 +124,20 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                 >
                   <span
                     className={cn(
-                      "w-14 shrink-0 text-right font-mono text-xs tabular-nums",
+                      "w-12 shrink-0 text-right font-mono text-xs tabular-nums",
                       selected ? "text-atlas-cream/80" : "text-atlas-muted",
                     )}
                   >
                     {row.id}
                   </span>
+                  {row.firstSpriteId != null ? (
+                    <SpriteThumb id={row.firstSpriteId} size={THUMB_SIZE} />
+                  ) : (
+                    <div
+                      style={{ width: THUMB_SIZE, height: THUMB_SIZE }}
+                      className="shrink-0"
+                    />
+                  )}
                   <span className="flex-1 truncate">
                     {row.name ?? (
                       <span
@@ -147,7 +157,7 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                     )}
                     title={`${row.spriteCount} sprite(s)`}
                   >
-                    {row.spriteCount}s
+                    {row.spriteCount}
                   </span>
                 </button>
               );

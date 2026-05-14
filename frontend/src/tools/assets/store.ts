@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 
-import { clearSpriteUrlCache } from "./SpriteGrid";
+import { clearSpriteUrlCache } from "./SpriteThumb";
 
 // True when the page is loaded inside the Tauri webview (which injects
 // `__TAURI_INTERNALS__` on `window`). Calling `tauriInvoke` outside of
