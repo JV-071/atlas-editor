@@ -46,6 +46,7 @@ type LoadStatus = "idle" | "loading" | "error";
 interface WorkspaceState {
   view: AppView;
   summary: WorkspaceSummary;
+  versionHint: string | null;
   rowsByCategory: Record<Category, AppearanceRow[]>;
   category: Category;
   selectedId: number | null;
@@ -146,6 +147,7 @@ async function resizeWindow(view: AppView): Promise<void> {
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   view: "launcher",
   summary: emptySummary,
+  versionHint: null,
   rowsByCategory: emptyRowsByCategory,
   category: "object",
   selectedId: null,
@@ -193,7 +195,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const summary = await invoke<WorkspaceSummary>("open_appearances", { path });
       set({ summary, status: "idle" });
       await Promise.all([get().refreshRows(), get().refreshRecent()]);
-      if (get().view === "launcher") await get().enterEditor();
     } catch (e) {
       set({ status: "error", error: String(e) });
     }
@@ -209,7 +210,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await Promise.all(tasks);
       // If something was already selected, refresh the linked OTB side.
       if (get().selectedId != null) await get().refreshSelectedDetails();
-      if (get().view === "launcher") await get().enterEditor();
     } catch (e) {
       set({ status: "error", error: String(e) });
     }
@@ -375,13 +375,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ status: "loading", error: null });
     try {
       const result = await invoke<AssetsBundleResult>("open_assets_bundle", { path });
-      set({ summary: result.summary, assetsDir: result.assets, status: "idle" });
+      set({
+        summary: result.summary,
+        assetsDir: result.assets,
+        versionHint: result.versionHint,
+        status: "idle",
+      });
       if (result.appearancesLoaded) {
         await Promise.all([get().refreshRows(), get().refreshRecent()]);
       } else {
         await get().refreshRecent();
       }
-      await get().enterEditor();
     } catch (e) {
       set({ status: "error", error: String(e) });
     }

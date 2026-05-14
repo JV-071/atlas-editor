@@ -38,9 +38,22 @@ pub struct WorkspaceSummary {
     pub effect_count: usize,
     pub missile_count: usize,
     pub otb_item_count: usize,
+    pub otb_version: Option<OtbVersion>,
     pub dirty: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+}
+
+/// Header metadata surfaced from a loaded `items.otb`. Mirrors
+/// `atlas_otb::OtbHeader` minus the 128-byte CSD blob (we surface the
+/// human-readable bits separately).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OtbVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub build: u32,
+    pub atlas_extended: bool,
 }
 
 /// Row shape for the virtualized item list. Kept deliberately small —
@@ -164,6 +177,12 @@ impl WorkspaceState {
             .as_ref()
             .map(|o| o.items.len())
             .unwrap_or(0);
+        let otb_version = self.workspace.otb.as_ref().map(|o| OtbVersion {
+            major: o.header.major,
+            minor: o.header.minor,
+            build: o.header.build,
+            atlas_extended: o.header.is_atlas_extended(),
+        });
 
         WorkspaceSummary {
             appearances_path: self
@@ -176,6 +195,7 @@ impl WorkspaceState {
             effect_count,
             missile_count,
             otb_item_count,
+            otb_version,
             dirty: self.dirty,
             can_undo: !self.history.is_empty(),
             can_redo: !self.future.is_empty(),
@@ -644,6 +664,8 @@ pub fn open_assets_bundle(
         guard.dirty = false;
     }
 
+    let assets_path_buf = std::path::PathBuf::from(&path);
+    let version_hint = extract_version_hint(&assets_path_buf);
     let assets = AssetsDirInfo {
         path,
         sheet_count,
@@ -653,6 +675,7 @@ pub fn open_assets_bundle(
         summary: guard.summary(),
         assets,
         appearances_loaded: appearances_file.is_some(),
+        version_hint,
     })
 }
 
@@ -662,6 +685,30 @@ pub struct AssetsBundleResult {
     pub summary: WorkspaceSummary,
     pub assets: AssetsDirInfo,
     pub appearances_loaded: bool,
+    /// Best-effort client version string extracted from the path. Look
+    /// at the assets directory and its parent for a name matching
+    /// `Tibia<major>.<minor>(.<build>)?`. Returns `None` when the path
+    /// gives no hint.
+    pub version_hint: Option<String>,
+}
+
+fn extract_version_hint(path: &std::path::Path) -> Option<String> {
+    // Walk up to the path itself + 2 ancestors. The Tibia installer
+    // typically puts the assets folder inside `Tibia<version>\assets`,
+    // so the immediate parent is the candidate that usually pays off.
+    let candidates = std::iter::once(path)
+        .chain(path.ancestors().take(3))
+        .filter_map(|p| p.file_name().and_then(|n| n.to_str()))
+        .collect::<Vec<_>>();
+    for name in candidates {
+        if let Some(rest) = name.strip_prefix("Tibia") {
+            // Must start with a digit to be a real version pin.
+            if rest.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                return Some(rest.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug, Serialize)]

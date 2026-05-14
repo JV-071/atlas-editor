@@ -5,6 +5,13 @@ export type Category = "object" | "outfit" | "effect" | "missile";
 
 export const CATEGORIES: Category[] = ["object", "outfit", "effect", "missile"];
 
+export interface OtbVersion {
+  major: number;
+  minor: number;
+  build: number;
+  atlasExtended: boolean;
+}
+
 export interface WorkspaceSummary {
   appearancesPath: string | null;
   otbPath: string | null;
@@ -13,6 +20,7 @@ export interface WorkspaceSummary {
   effectCount: number;
   missileCount: number;
   otbItemCount: number;
+  otbVersion: OtbVersion | null;
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -40,6 +48,7 @@ export const emptySummary: WorkspaceSummary = {
   effectCount: 0,
   missileCount: 0,
   otbItemCount: 0,
+  otbVersion: null,
   dirty: false,
   canUndo: false,
   canRedo: false,
@@ -204,6 +213,7 @@ export interface AssetsBundleResult {
   summary: WorkspaceSummary;
   assets: AssetsDirInfo;
   appearancesLoaded: boolean;
+  versionHint: string | null;
 }
 
 export type PixelFormat = "bgra" | "rgba" | "argb" | "abgr";
