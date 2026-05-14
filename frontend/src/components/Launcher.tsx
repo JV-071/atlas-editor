@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   Check,
   Copy,
@@ -23,33 +24,6 @@ function dirname(path: string): string {
   const cleaned = path.replace(/\\/g, "/");
   const idx = cleaned.lastIndexOf("/");
   return idx === -1 ? cleaned : cleaned.slice(0, idx);
-}
-
-interface ChoiceProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-function ChoiceCard({ icon, title, subtitle, onClick, disabled }: ChoiceProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-lg border p-4 text-center transition-all",
-        "border-atlas-border bg-atlas-paper hover:border-atlas-ink hover:shadow-sm",
-        "disabled:opacity-50 disabled:cursor-not-allowed",
-      )}
-    >
-      <div className="text-atlas-ink">{icon}</div>
-      <div className="text-sm font-semibold text-atlas-ink">{title}</div>
-      <div className="text-[11px] text-atlas-muted leading-snug">{subtitle}</div>
-    </button>
-  );
 }
 
 /// One-line "path · copy button" cluster. Shows the basename, falls
@@ -166,9 +140,7 @@ export function Launcher() {
   const hasAnything = hasAssets || hasOtb;
 
   // Grow the window the first time something is staged, shrink back if
-  // the user discards everything. The compare → resize is debounced
-  // implicitly by React: the effect only fires when `hasAnything`
-  // flips between true/false, not on every render.
+  // the user discards everything.
   useEffect(() => {
     void resizeWindow(hasAnything ? "launcher-staged" : "launcher-empty");
   }, [hasAnything]);
@@ -195,27 +167,93 @@ export function Launcher() {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 w-full max-w-xl">
-        <ChoiceCard
-          icon={<ImagePlus className="h-7 w-7" />}
-          title={hasAssets ? "Re-pick assets" : "Open assets"}
-          subtitle="Folder with catalog-content.json"
+      {/* Step 1 (required): Tibia client assets — sprites + appearances.dat */}
+      <div className="w-full max-w-xl">
+        <div className="flex items-center justify-between mb-1 px-1">
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-atlas-muted">
+            Step 1 · Client assets
+          </span>
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700">
+            Required
+          </span>
+        </div>
+        <button
+          type="button"
           onClick={() => void pickAssetsBundle()}
           disabled={status === "loading"}
-        />
-        <ChoiceCard
-          icon={<FileText className="h-7 w-7" />}
-          title={hasOtb ? "Re-pick .otb" : "Open items.otb"}
-          subtitle="Legacy or Atlas-extended OTB"
+          className={cn(
+            "w-full flex items-center gap-3 rounded-lg border p-4 text-left transition-all",
+            hasAssets
+              ? "border-emerald-700/40 bg-emerald-700/5 hover:bg-emerald-700/10"
+              : "border-atlas-border bg-atlas-paper hover:border-atlas-ink hover:shadow-sm",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+          )}
+        >
+          <ImagePlus className="h-8 w-8 text-atlas-ink shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-atlas-ink">
+              {hasAssets ? "Re-pick assets folder" : "Open assets folder"}
+            </div>
+            <div className="text-[11px] text-atlas-muted leading-snug">
+              Folder containing <code>catalog-content.json</code> — sprites and
+              appearances.dat live here. The Tibia client always reads from this.
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* Step 2 (optional): server-side items.otb */}
+      <div className="w-full max-w-xl mt-3">
+        <div className="flex items-center justify-between mb-1 px-1">
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-atlas-muted">
+            Step 2 · Server catalog
+          </span>
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-atlas-muted">
+            Optional
+          </span>
+        </div>
+        <button
+          type="button"
           onClick={() => void openOtbPicker()}
           disabled={status === "loading"}
-        />
+          className={cn(
+            "w-full flex items-center gap-3 rounded border p-3 text-left transition-all",
+            hasOtb
+              ? "border-emerald-700/40 bg-emerald-700/5 hover:bg-emerald-700/10"
+              : "border-atlas-border bg-atlas-paper hover:border-atlas-ink hover:shadow-sm",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+          )}
+        >
+          <FileText className="h-6 w-6 text-atlas-ink shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-atlas-ink">
+              {hasOtb ? "Re-pick items.otb" : "Open items.otb"}
+            </div>
+            <div className="text-[11px] text-atlas-muted leading-snug">
+              Server-side catalog. Needed only if you want to edit OTB attributes
+              alongside the client-side appearances.
+            </div>
+          </div>
+        </button>
       </div>
 
       {hasAnything && (
         <div className="mt-4 w-full max-w-xl space-y-3">
           <AssetsPreviewCard />
           <OtbPreviewCard />
+          {!hasAssets && hasOtb && (
+            <div className="flex items-start gap-2 rounded border border-amber-600/50 bg-amber-600/5 p-3 text-xs">
+              <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-atlas-ink font-medium">No client assets loaded</p>
+                <p className="text-atlas-ink-soft">
+                  You can inspect and edit the OTB itself, but sprites and
+                  appearance flags won't be available. Load the assets folder for
+                  the full experience.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button
               type="button"
