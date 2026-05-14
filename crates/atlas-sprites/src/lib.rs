@@ -32,6 +32,8 @@
 
 use std::path::{Path, PathBuf};
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dashmap::DashMap;
 use image::RgbaImage;
@@ -44,17 +46,23 @@ pub use atlas_core::AssetId;
 /// nominally uses BGRA, but the layout has shifted across client builds.
 /// Expose this as a runtime knob so the user can pick the right one
 /// without rebuilding when colors come out wrong.
+///
+/// `#[repr(u8)]` lets us pack it into an `AtomicU8` inside `Atlas`,
+/// so the pixel format can be flipped with `&self` (no exterior lock)
+/// — which is what enables sprite reads to share a single
+/// `Arc<Atlas>` without serializing through a workspace-level mutex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[repr(u8)]
 pub enum PixelFormat {
     /// Bytes on disk are B, G, R, A. Swap to R, G, B, A on read.
-    Bgra,
+    Bgra = 0,
     /// Bytes on disk are R, G, B, A. No swap.
-    Rgba,
+    Rgba = 1,
     /// Bytes on disk are A, R, G, B (Windows/GDI native). Reorder to RGBA.
-    Argb,
+    Argb = 2,
     /// Bytes on disk are A, B, G, R. Reorder to RGBA.
-    Abgr,
+    Abgr = 3,
 }
 
 impl Default for PixelFormat {
@@ -63,6 +71,17 @@ impl Default for PixelFormat {
         // section. Earlier hand-coded BGRA was a hold-over from the
         // legacy `.spr` reverse-engineering.
         Self::Rgba
+    }
+}
+
+impl PixelFormat {
+    fn from_u8(b: u8) -> Self {
+        match b {
+            1 => Self::Rgba,
+            2 => Self::Argb,
+            3 => Self::Abgr,
+            _ => Self::Bgra,
+        }
     }
 }
 
@@ -318,9 +337,12 @@ pub struct Atlas {
     /// (raw BGRA after a 32-byte header) which matches the modern
     /// Tibia 12+ format.
     bmp_wrap: bool,
-    /// Channel order of the on-disk pixel data. Exposed so the UI can
-    /// flip between candidates when colors come out wrong.
-    pixel_format: PixelFormat,
+    /// Channel order of the on-disk pixel data. Stored as an
+    /// `AtomicU8` so the format can be flipped with `&self`
+    /// (interior mutability) — that's what lets sprite reads share
+    /// a single `Arc<Atlas>` and run truly concurrently instead of
+    /// serializing through a workspace-level mutex.
+    pixel_format: AtomicU8,
 }
 
 impl Atlas {
@@ -330,7 +352,7 @@ impl Atlas {
             sheet_cache: DashMap::new(),
             png_cache: DashMap::new(),
             bmp_wrap: false,
-            pixel_format: PixelFormat::default(),
+            pixel_format: AtomicU8::new(PixelFormat::default() as u8),
         }
     }
 
@@ -344,24 +366,26 @@ impl Atlas {
         self
     }
 
-    pub fn with_pixel_format(mut self, pf: PixelFormat) -> Self {
-        self.pixel_format = pf;
-        // Changing the channel order invalidates every cached byte.
-        self.sheet_cache.clear();
-        self.png_cache.clear();
+    pub fn with_pixel_format(self, pf: PixelFormat) -> Self {
+        self.set_pixel_format(pf);
         self
     }
 
-    pub fn set_pixel_format(&mut self, pf: PixelFormat) {
-        if self.pixel_format != pf {
-            self.pixel_format = pf;
+    /// Flip the on-disk channel order. Takes `&self` (interior
+    /// mutability via `AtomicU8` + DashMap) so a shared `Arc<Atlas>`
+    /// can be re-configured without anybody locking around it.
+    /// Clears both caches when the format actually changes.
+    pub fn set_pixel_format(&self, pf: PixelFormat) {
+        let new = pf as u8;
+        let old = self.pixel_format.swap(new, Ordering::Relaxed);
+        if old != new {
             self.sheet_cache.clear();
             self.png_cache.clear();
         }
     }
 
     pub fn pixel_format(&self) -> PixelFormat {
-        self.pixel_format
+        PixelFormat::from_u8(self.pixel_format.load(Ordering::Relaxed))
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -524,10 +548,12 @@ impl Atlas {
             })?;
             let expected = (sheet_side as usize) * (sheet_side as usize) * BYTES_PER_PIXEL;
             // Permute the on-disk channels into RGBA per the configured
-            // `pixel_format`.
+            // `pixel_format`. Snapshot the format once so a concurrent
+            // `set_pixel_format` doesn't tear the loop.
+            let pf = self.pixel_format();
             let mut rgba = Vec::with_capacity(expected);
             for chunk in decoded[..expected].chunks_exact(4) {
-                rgba.extend_from_slice(&self.pixel_format.to_rgba(chunk));
+                rgba.extend_from_slice(&pf.to_rgba(chunk));
             }
             RgbaImage::from_raw(sheet_side, sheet_side, rgba).expect("pre-validated buffer dims")
         };

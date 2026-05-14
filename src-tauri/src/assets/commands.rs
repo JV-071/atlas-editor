@@ -180,7 +180,7 @@ pub struct WorkspaceState {
     pub dirty: bool,
     /// Loaded sprite atlas, set by `set_assets_dir`. Optional because
     /// the editor is useful for attribute work even without sprites.
-    pub atlas: Option<Atlas>,
+    pub atlas: Option<std::sync::Arc<Atlas>>,
     pub assets_dir: Option<PathBuf>,
 }
 
@@ -769,7 +769,7 @@ pub fn set_assets_dir(
             .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid)),
     };
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    guard.atlas = Some(atlas);
+    guard.atlas = Some(std::sync::Arc::new(atlas));
     guard.assets_dir = Some(PathBuf::from(path));
     Ok(info)
 }
@@ -805,7 +805,7 @@ pub fn open_assets_bundle(
         .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid));
 
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    guard.atlas = Some(atlas);
+    guard.atlas = Some(std::sync::Arc::new(atlas));
     guard.assets_dir = Some(assets_path);
     if let Some(parsed) = appearances {
         guard.workspace.appearances = Some(parsed);
@@ -899,6 +899,19 @@ pub fn get_assets_dir_info(
     }))
 }
 
+/// Helper: take a cloned `Arc<Atlas>` out of the workspace mutex
+/// and drop the lock before doing any work. This is what unblocks
+/// the IPC firehose during a fast scroll of the Sprites grid —
+/// without it, every `get_sprite_png` would serialize through the
+/// workspace-level mutex even though the actual sprite decode +
+/// encode happens entirely inside the lock-free `Atlas`.
+fn checkout_atlas(
+    state: &State<'_, SharedWorkspace>,
+) -> Result<Option<std::sync::Arc<Atlas>>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    Ok(guard.atlas.clone())
+}
+
 /// Diagnostic dump of the sheet covering `sprite_id`. Returns the
 /// sheet's catalog metadata plus the first bytes of the raw + decoded
 /// streams so we can debug pixel-format mismatches without rebuilding.
@@ -907,10 +920,7 @@ pub fn inspect_sprite(
     sprite_id: u32,
     state: State<'_, SharedWorkspace>,
 ) -> Result<SheetInspection, String> {
-    let guard = state.lock().map_err(|e| e.to_string())?;
-    let atlas = guard
-        .atlas
-        .as_ref()
+    let atlas = checkout_atlas(&state)?
         .ok_or("assets dir is not set — open assets first")?;
     atlas.inspect(sprite_id).map_err(|e| e.to_string())
 }
@@ -918,16 +928,14 @@ pub fn inspect_sprite(
 /// Change the on-disk channel order the sprite atlas uses to decode
 /// sheets. Returns the new format so the UI can reflect it. Clears
 /// the sheet cache so the next `get_sprite_png` redecodes with the
-/// fresh permutation.
+/// fresh permutation. Takes `&self` on Atlas (interior mutability)
+/// so it can share the same `Arc` as concurrent sprite reads.
 #[tauri::command]
 pub fn set_sprite_pixel_format(
     format: PixelFormat,
     state: State<'_, SharedWorkspace>,
 ) -> Result<PixelFormat, String> {
-    let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let atlas = guard
-        .atlas
-        .as_mut()
+    let atlas = checkout_atlas(&state)?
         .ok_or("assets dir is not set — open assets first")?;
     atlas.set_pixel_format(format);
     Ok(atlas.pixel_format())
@@ -955,8 +963,13 @@ pub fn get_sprite_png(
     sprite_id: u32,
     state: State<'_, SharedWorkspace>,
 ) -> Result<Option<String>, String> {
-    let guard = state.lock().map_err(|e| e.to_string())?;
-    let Some(atlas) = guard.atlas.as_ref() else {
+    // The mutex is held just long enough to clone the Arc; everything
+    // after — sheet load, crop, PNG encode, base64 — runs lock-free,
+    // sharing the Atlas's internal `DashMap` caches with whatever
+    // other sprite calls are in flight. Fast scroll through 100k
+    // tiles used to freeze the app because each `get_sprite_png`
+    // had to wait its turn on this mutex.
+    let Some(atlas) = checkout_atlas(&state)? else {
         return Ok(None);
     };
     let url = atlas.sprite_data_url(sprite_id).map_err(|e| e.to_string())?;

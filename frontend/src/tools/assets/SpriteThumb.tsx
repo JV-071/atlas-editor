@@ -27,6 +27,13 @@ interface Props {
   className?: string;
 }
 
+/// Delay before firing the actual fetch on mount. The virtualizer
+/// mounts/unmounts tiles aggressively during fast scroll; tiles that
+/// disappear within this window never trigger an IPC call, which
+/// keeps the backend's request queue from exploding into the
+/// thousands when the user flings the list.
+const FETCH_DEBOUNCE_MS = 90;
+
 /// Lazy sprite renderer keyed by `sprite_id`. First request goes
 /// through the Tauri IPC (which the backend memoizes); the URL is
 /// then stashed in `SPRITE_URL_CACHE` so every later mount renders
@@ -39,6 +46,7 @@ export const SpriteThumb = memo(function SpriteThumb({ id, size = 64, className 
   const [errored, setErrored] = useState(false);
 
   useEffect(() => {
+    // Fast path: cached → render synchronously, no IPC, no debounce.
     const cached = SPRITE_URL_CACHE.get(id);
     if (cached) {
       setUrl(cached);
@@ -48,21 +56,25 @@ export const SpriteThumb = memo(function SpriteThumb({ id, size = 64, className 
     let cancelled = false;
     setUrl(null);
     setErrored(false);
-    fetchSpritePng(id)
-      .then((u) => {
-        if (cancelled) return;
-        if (u) {
-          SPRITE_URL_CACHE.set(id, u);
-          setUrl(u);
-        } else {
-          setErrored(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setErrored(true);
-      });
+    const timeout = setTimeout(() => {
+      if (cancelled) return;
+      fetchSpritePng(id)
+        .then((u) => {
+          if (cancelled) return;
+          if (u) {
+            SPRITE_URL_CACHE.set(id, u);
+            setUrl(u);
+          } else {
+            setErrored(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setErrored(true);
+        });
+    }, FETCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
     };
   }, [id, fetchSpritePng, cacheBust]);
 
