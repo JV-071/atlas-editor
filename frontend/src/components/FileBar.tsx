@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 
+import logoUrl from "../assets/logo.png";
 import { useWorkspace } from "../stores/workspace";
 import { cn } from "../lib/utils";
 
@@ -129,9 +130,15 @@ export function FileBar() {
         type="button"
         onClick={() => void goToLauncher()}
         title="Back to launcher"
-        className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+        className="inline-flex items-center gap-2 rounded p-1 pr-2 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
       >
-        <Home className="h-4 w-4" />
+        <img
+          src={logoUrl}
+          alt="Atlas"
+          className="h-6 w-6 object-contain select-none"
+          draggable={false}
+        />
+        <Home className="h-3.5 w-3.5" />
       </button>
 
       <div className="inline-flex rounded overflow-hidden">
