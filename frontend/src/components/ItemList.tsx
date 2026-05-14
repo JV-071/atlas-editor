@@ -8,6 +8,12 @@ import { cn } from "../lib/utils";
 
 const ROW_HEIGHT = 32;
 
+/// Stable empty-row reference. Returning `[]` inline from a Zustand
+/// selector creates a fresh array on every store update, which trips
+/// the v5 strict-equality check and triggers an infinite re-render
+/// loop ("getSnapshot should be cached" warning).
+const EMPTY_APPEARANCE_ROWS: AppearanceRow[] = [];
+
 function matchesAppearance(row: AppearanceRow, needle: string): boolean {
   if (!needle) return true;
   const lc = needle.toLowerCase();
@@ -30,7 +36,7 @@ function matchesOtb(row: OtbItemRowDto, needle: string): boolean {
 export function ItemList() {
   const category = useWorkspace((s) => s.category);
   const appearanceRows = useWorkspace((s) =>
-    s.category !== "otb" ? s.rowsByCategory[s.category] : ([] as AppearanceRow[]),
+    s.category !== "otb" ? s.rowsByCategory[s.category] : EMPTY_APPEARANCE_ROWS,
   );
   const otbRows = useWorkspace((s) => s.otbRows);
   const otbLoaded = useWorkspace((s) => s.summary.otbPath !== null);
