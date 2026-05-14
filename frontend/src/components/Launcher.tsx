@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import logoUrl from "../assets/logo.png";
-import { useWorkspace } from "../stores/workspace";
+import { resizeWindow, useWorkspace } from "../stores/workspace";
 import { cn } from "../lib/utils";
 
 function basename(path: string): string {
@@ -164,6 +164,14 @@ export function Launcher() {
   const hasAssets = assetsDir != null;
   const hasOtb = summary.otbPath != null;
   const hasAnything = hasAssets || hasOtb;
+
+  // Grow the window the first time something is staged, shrink back if
+  // the user discards everything. The compare → resize is debounced
+  // implicitly by React: the effect only fires when `hasAnything`
+  // flips between true/false, not on every render.
+  useEffect(() => {
+    void resizeWindow(hasAnything ? "launcher-staged" : "launcher-empty");
+  }, [hasAnything]);
 
   const recentAssetsPaths = recent.appearances
     .map(dirname)

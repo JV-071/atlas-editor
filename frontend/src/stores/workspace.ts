@@ -124,21 +124,35 @@ async function fetchAllCategories(): Promise<Record<Category, AppearanceRow[]>> 
   return Object.fromEntries(results) as Record<Category, AppearanceRow[]>;
 }
 
-/// Resize the current Tauri window between the compact launcher and
-/// the full editor footprint. Falls back to a no-op when the API is
-/// unavailable (e.g. running in a plain browser preview).
-async function resizeWindow(view: AppView): Promise<void> {
+/// Resize the current Tauri window between the compact launcher,
+/// staged launcher (preview cards visible), and the full editor
+/// footprint. Falls back to a no-op when the API is unavailable
+/// (e.g. running in a plain browser preview).
+export type WindowMode = "launcher-empty" | "launcher-staged" | "editor";
+
+export async function resizeWindow(mode: WindowMode): Promise<void> {
   try {
     const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
-    if (view === "editor") {
-      await win.setMinSize(new LogicalSize(900, 600));
-      await win.setSize(new LogicalSize(1280, 800));
-    } else {
-      await win.setMinSize(new LogicalSize(480, 360));
-      await win.setSize(new LogicalSize(640, 480));
+    switch (mode) {
+      case "editor":
+        await win.setMinSize(new LogicalSize(900, 600));
+        await win.setSize(new LogicalSize(1280, 800));
+        break;
+      case "launcher-staged":
+        // Big enough to show two preview cards + CTA without scrolling
+        // but still smaller than the editor so the transition is
+        // visible. No need to recenter — only the height grows.
+        await win.setMinSize(new LogicalSize(480, 360));
+        await win.setSize(new LogicalSize(680, 720));
+        break;
+      case "launcher-empty":
+      default:
+        await win.setMinSize(new LogicalSize(480, 360));
+        await win.setSize(new LogicalSize(640, 480));
+        break;
     }
-    await win.center();
+    if (mode !== "launcher-staged") await win.center();
   } catch {
     // Ignore — we're probably not inside the Tauri shell.
   }
@@ -397,7 +411,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async goToLauncher() {
-    await resizeWindow("launcher");
+    const { summary, assetsDir } = get();
+    const hasContent = summary.appearancesPath != null || summary.otbPath != null || assetsDir != null;
+    await resizeWindow(hasContent ? "launcher-staged" : "launcher-empty");
     set({ view: "launcher", selectedId: null, selectedAppearance: null, selectedOtbItem: null });
   },
 
