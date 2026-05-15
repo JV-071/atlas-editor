@@ -77,4 +77,24 @@ export const pt: Record<MessageKey, string> = {
   "attr.section.upgradeClassification": "Classificação de upgrade",
   "attr.section.skillwheelGem": "Skill wheel gem",
   "attr.section.proficiency": "Proficiência",
+
+  "export.title": "Exportar appearance",
+  "export.button": "Exportar",
+  "export.run": "Executar",
+  "export.format": "Formato",
+  "export.pickFile": "Escolha o arquivo de saída",
+  "export.pickFolder": "Escolha a pasta de saída",
+  "export.wrote": "{count} arquivo(s) gravado(s).",
+  "export.format.itemgif": "Item GIF",
+  "export.format.outfitpngs": "Outfit PNGs",
+  "export.format.effectgif": "Effect GIF",
+  "export.format.missilegif": "Missile GIF",
+  "export.hint.itemgif":
+    "GIF animado ciclando todas as phases. Um único arquivo.",
+  "export.hint.outfitpngs":
+    "Um PNG por combinação de (framegroup × addon × direção × phase × layer). Nomes seguem a convenção Gesior.",
+  "export.hint.effectgif":
+    "GIF animado que percorre todas as phases uma vez e loopa.",
+  "export.hint.missilegif":
+    "GIF animado ciclando 8 direções no sentido horário a partir do Norte.",
 };

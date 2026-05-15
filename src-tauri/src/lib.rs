@@ -69,6 +69,7 @@ pub fn run() {
             assets::commands::inspect_sprite,
             assets::commands::create_object_appearance,
             assets::commands::create_otb_item,
+            assets::commands::export_appearance,
             // Converter
             converter::commands::converter_peek,
             converter::commands::converter_run,

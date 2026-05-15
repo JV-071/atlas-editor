@@ -4,5 +4,6 @@
 
 pub mod commands;
 pub mod edits;
+pub mod export;
 
 pub use commands::{hydrate_recent_files, SharedWorkspace, WorkspaceState};

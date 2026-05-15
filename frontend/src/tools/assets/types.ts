@@ -452,3 +452,33 @@ export interface AssetsBundleResult {
 
 export type PixelFormat = "bgra" | "rgba" | "argb" | "abgr";
 export const PIXEL_FORMATS: PixelFormat[] = ["bgra", "rgba", "argb", "abgr"];
+
+/// Output formats the export pipeline knows how to write. Stays in
+/// sync with the `ExportFormat` Rust enum in `src-tauri`; both use the
+/// same serde `lowercase` rename.
+export type ExportFormat = "itemgif" | "outfitpngs" | "effectgif" | "missilegif";
+
+export const EXPORT_FORMATS: ExportFormat[] = [
+  "itemgif",
+  "outfitpngs",
+  "effectgif",
+  "missilegif",
+];
+
+export function defaultExportFormat(category: AppearanceCategory): ExportFormat {
+  switch (category) {
+    case "object":
+      return "itemgif";
+    case "outfit":
+      return "outfitpngs";
+    case "effect":
+      return "effectgif";
+    case "missile":
+      return "missilegif";
+  }
+}
+
+export interface ExportReport {
+  format: ExportFormat;
+  files: string[];
+}

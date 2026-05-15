@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
 
+import { ExportDialog } from "./ExportDialog";
 import { useWorkspace } from "./store";
 import {
   HOOK_DIRECTIONS,
@@ -830,6 +832,7 @@ export function AttributeEditor() {
   const appearance = useWorkspace((s) => s.selectedAppearance);
   const error = useWorkspace((s) => s.error);
   const t = useT();
+  const [showExport, setShowExport] = useState(false);
 
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
@@ -847,6 +850,13 @@ export function AttributeEditor() {
       </div>
     );
   }
+  // The "sprites" category is browsed via the SpriteGrid, not the
+  // attribute editor — bail out before we try to render export tooling
+  // that doesn't apply.
+  const exportableCategory =
+    category === "object" || category === "outfit" || category === "effect" || category === "missile"
+      ? category
+      : null;
 
   if (!appearance) {
     return (
@@ -861,7 +871,7 @@ export function AttributeEditor() {
       <div className="p-6 space-y-6 max-w-3xl">
         <header className="flex items-center gap-3 pb-3 border-b border-atlas-border">
           <Icon className={cn("h-6 w-6 shrink-0", meta.iconClass)} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h2 className="text-xl font-semibold truncate">
               {headerInfo?.name ?? (
                 <span className="italic text-atlas-muted">(unnamed)</span>
@@ -874,6 +884,17 @@ export function AttributeEditor() {
               {appearance.spriteIds.length} sprite(s)
             </p>
           </div>
+          {exportableCategory && appearance.spriteIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowExport(true)}
+              title={t("export.title")}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-atlas-border bg-atlas-paper text-sm text-atlas-ink hover:border-atlas-ink hover:bg-atlas-sand"
+            >
+              <Download className="h-4 w-4" />
+              {t("export.button")}
+            </button>
+          )}
         </header>
 
         {error && (
@@ -891,6 +912,13 @@ export function AttributeEditor() {
 
         <AppearanceSection appearance={appearance} />
       </div>
+      {showExport && exportableCategory && (
+        <ExportDialog
+          appearance={appearance}
+          category={exportableCategory}
+          onClose={() => setShowExport(false)}
+        />
+      )}
     </div>
   );
 }

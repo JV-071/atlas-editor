@@ -80,6 +80,26 @@ export const en = {
   "attr.section.upgradeClassification": "Upgrade classification",
   "attr.section.skillwheelGem": "Skill wheel gem",
   "attr.section.proficiency": "Proficiency",
+
+  "export.title": "Export appearance",
+  "export.button": "Export",
+  "export.run": "Run",
+  "export.format": "Format",
+  "export.pickFile": "Choose output file",
+  "export.pickFolder": "Choose output folder",
+  "export.wrote": "Wrote {count} file(s).",
+  "export.format.itemgif": "Item GIF",
+  "export.format.outfitpngs": "Outfit PNGs",
+  "export.format.effectgif": "Effect GIF",
+  "export.format.missilegif": "Missile GIF",
+  "export.hint.itemgif":
+    "Animated GIF cycling every animation phase. One file.",
+  "export.hint.outfitpngs":
+    "One PNG per (framegroup × addon × direction × phase × layer). Names follow the Gesior convention.",
+  "export.hint.effectgif":
+    "Animated GIF that walks through every phase once and loops.",
+  "export.hint.missilegif":
+    "Animated GIF cycling 8 directions clockwise from North.",
 } as const;
 
 export type MessageKey = keyof typeof en;

@@ -30,13 +30,16 @@
 
 #![forbid(unsafe_code)]
 
+pub mod export;
+pub use export::{encode_animated_gif, encode_png_rgba};
+pub use image::RgbaImage;
+
 use std::path::{Path, PathBuf};
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dashmap::DashMap;
-use image::RgbaImage;
 use serde::Deserialize;
 use thiserror::Error;
 

@@ -38,6 +38,7 @@ xz2 = "0.1"
 
 # Image manipulation
 image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
+gif = { version = "0.13", default-features = false, features = ["std", "color_quant"] }
 
 # Concurrency
 dashmap = "6"
