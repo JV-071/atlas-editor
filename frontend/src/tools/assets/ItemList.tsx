@@ -130,8 +130,12 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                   >
                     {row.id}
                   </span>
-                  {row.firstSpriteId != null ? (
-                    <SpriteThumb id={row.firstSpriteId} size={THUMB_SIZE} />
+                  {row.displaySpriteIds.length > 0 ? (
+                    <SpriteThumb
+                      ids={row.displaySpriteIds}
+                      durationsMs={row.displayDurationsMs}
+                      size={THUMB_SIZE}
+                    />
                   ) : (
                     <div
                       style={{ width: THUMB_SIZE, height: THUMB_SIZE }}

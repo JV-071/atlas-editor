@@ -14,7 +14,8 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use atlas_appearances::{AppearanceInfo, Appearances};
+use atlas_appearances::{AppearanceInfo, Appearances, FixedFrameGroup};
+use atlas_core::AppearanceCategory;
 use atlas_otb::Otb;
 use atlas_sprites::{Atlas, PixelFormat, SheetInspection, SpriteDims};
 use atlas_workspace::Workspace;
@@ -73,13 +74,127 @@ pub struct AppearanceRow {
     pub id: u32,
     pub name: Option<String>,
     pub sprite_count: usize,
-    /// First sprite id of the flattened list, used as the thumbnail
-    /// in the row. `None` when the appearance has no sprite_ids at
-    /// all (rare in practice — usually a placeholder slot).
-    pub first_sprite_id: Option<u32>,
+    /// Sprite ids the row thumbnail cycles through. For outfits this is
+    /// the idle frame group looking south; for objects/effects/missiles
+    /// the initial frame group walked through every animation phase.
+    /// Empty when the appearance has no sprite payload at all.
+    pub display_sprite_ids: Vec<u32>,
+    /// Per-phase animation duration in milliseconds, indexed parallel to
+    /// `display_sprite_ids`. Empty when the appearance is not animated;
+    /// callers should pick a sensible default in that case.
+    pub display_durations_ms: Vec<u32>,
     pub otb_server_id: Option<u16>,
     pub is_appearance_orphan: bool,
     pub has_otb_collision: bool,
+}
+
+/// Compute the sprite-id cycle the list thumbnail should display for a
+/// given appearance. Picks the south-facing column for outfits (the front
+/// of the creature) and the initial frame group for everything else, then
+/// emits one sprite per animation phase so the thumbnail can cycle.
+///
+/// The proto carrying these appearances often omits the pattern dimension
+/// fields entirely (e.g. files exported by editor tools that only round-trip
+/// the sprite ids). When that happens we fall back to Tibia conventions for
+/// the category — outfits get pattern_width=4 (NESW directions), everything
+/// else is treated as a flat list of animation phases.
+fn build_display_cycle(app: &AppearanceInfo) -> (Vec<u32>, Vec<u32>) {
+    let Some(fg) = pick_frame_group(app) else {
+        return (Vec::new(), Vec::new());
+    };
+    let Some(si) = fg.sprite_info.as_ref() else {
+        return (Vec::new(), Vec::new());
+    };
+    if si.sprite_ids.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    // Tibia convention: outfits face south by default (pattern_x=2 of NESW).
+    // The other categories don't have a direction column.
+    let (pw_default, target_direction_x) = match app.category {
+        AppearanceCategory::Outfit => (4u32, 2u32),
+        _ => (1u32, 0u32),
+    };
+
+    let pw = si.pattern_width.unwrap_or(pw_default).max(1);
+    let ph = si.pattern_height.unwrap_or(1).max(1);
+    let pd = si.pattern_depth.unwrap_or(1).max(1);
+    let layers = si.layers.unwrap_or(1).max(1);
+
+    let cells_per_phase = (pw as usize)
+        .saturating_mul(ph as usize)
+        .saturating_mul(pd as usize)
+        .saturating_mul(layers as usize);
+    let total = si.sprite_ids.len();
+
+    // Phase count: prefer the proto's animation block; otherwise infer from
+    // the flat list length under the (pw, ph, pd, layers) we picked above.
+    // Capped so monstrous lists (72+) don't make the thumbnail flicker at a
+    // hundred phases per second.
+    const MAX_INFERRED_PHASES: u32 = 12;
+    let phases = if let Some(anim) = si.animation.as_ref() {
+        anim.sprite_phases.len().max(1) as u32
+    } else if cells_per_phase > 0 && total >= cells_per_phase {
+        ((total / cells_per_phase) as u32).clamp(1, MAX_INFERRED_PHASES)
+    } else {
+        1
+    };
+
+    let direction_x = target_direction_x.min(pw.saturating_sub(1));
+
+    let mut ids = Vec::with_capacity(phases as usize);
+    for phase in 0..phases {
+        // Manual indexing rather than SpriteInfoData::sprite_at because
+        // we want to honor the inferred dims, not the proto's `None`s.
+        let idx = ((((phase * pd) * ph) * pw + direction_x) * layers) as usize;
+        match si.sprite_ids.get(idx) {
+            Some(&id) => ids.push(id),
+            None => break,
+        }
+    }
+
+    if ids.is_empty() {
+        // Last-ditch fallback: at least show the first sprite of the
+        // flat list so the row isn't an empty placeholder.
+        return (app.sprite_ids.iter().copied().take(1).collect(), Vec::new());
+    }
+
+    let durations = si
+        .animation
+        .as_ref()
+        .map(|a| {
+            a.sprite_phases
+                .iter()
+                .map(|p| {
+                    // Tibia client picks a value in [min, max]; we just
+                    // average the two so the thumbnail loops at a stable
+                    // pace without an RNG in the render path.
+                    let lo = p.duration_min.unwrap_or(0);
+                    let hi = p.duration_max.unwrap_or(lo);
+                    (lo + hi) / 2
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    (ids, durations)
+}
+
+/// Pick the frame group whose sprite_info should drive the list thumbnail.
+/// Prefers the fixed-frame-group hint when the file sets it, otherwise the
+/// first frame group that carries sprites.
+fn pick_frame_group(app: &AppearanceInfo) -> Option<&atlas_appearances::FrameGroupInfo> {
+    let preferred = match app.category {
+        AppearanceCategory::Outfit => Some(FixedFrameGroup::OutfitIdle),
+        AppearanceCategory::Object => Some(FixedFrameGroup::ObjectInitial),
+        _ => None,
+    };
+    preferred
+        .and_then(|target| {
+            app.frame_groups
+                .iter()
+                .find(|fg| fg.fixed_frame_group == Some(target))
+        })
+        .or_else(|| app.frame_groups.iter().find(|fg| fg.sprite_info.is_some()))
 }
 
 /// Row shape for the OTB-only list view, used when the user loads an
@@ -556,11 +671,13 @@ pub fn list_appearances(
                 }
                 None => (None, false, false),
             };
+            let (display_sprite_ids, display_durations_ms) = build_display_cycle(app);
             AppearanceRow {
                 id: app.id.0,
                 name: app.name.clone(),
                 sprite_count: app.sprite_ids.len(),
-                first_sprite_id: app.sprite_ids.first().copied(),
+                display_sprite_ids,
+                display_durations_ms,
                 otb_server_id,
                 is_appearance_orphan,
                 has_otb_collision,
@@ -646,9 +763,7 @@ pub struct SpriteRangeDto {
 /// schema we don't recognise (e.g. `"type": "appearance"` singular
 /// instead of `"appearances"`).
 #[tauri::command]
-pub fn inspect_catalog(
-    state: State<'_, SharedWorkspace>,
-) -> Result<serde_json::Value, String> {
+pub fn inspect_catalog(state: State<'_, SharedWorkspace>) -> Result<serde_json::Value, String> {
     let guard = state.lock().map_err(|e| e.to_string())?;
     let dir = guard
         .assets_dir
@@ -665,7 +780,9 @@ pub fn inspect_catalog(
         std::collections::BTreeMap::new();
     for entry in &entries {
         if let Some(t) = entry.get("type").and_then(|v| v.as_str()) {
-            by_type.entry(t.to_string()).or_insert_with(|| entry.clone());
+            by_type
+                .entry(t.to_string())
+                .or_insert_with(|| entry.clone());
         } else {
             by_type
                 .entry("(missing type)".into())
@@ -788,9 +905,7 @@ pub fn open_assets_bundle(
     let appearances_file = atlas.catalog().appearances_file.clone();
     let assets_path = PathBuf::from(&path);
 
-    let appearances_path = appearances_file
-        .as_ref()
-        .map(|name| assets_path.join(name));
+    let appearances_path = appearances_file.as_ref().map(|name| assets_path.join(name));
     let appearances = match appearances_path.as_ref() {
         Some(p) => Some(Appearances::load_from_file(p).map_err(|e| e.to_string())?),
         None => None,
@@ -920,8 +1035,7 @@ pub fn inspect_sprite(
     sprite_id: u32,
     state: State<'_, SharedWorkspace>,
 ) -> Result<SheetInspection, String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
     atlas.inspect(sprite_id).map_err(|e| e.to_string())
 }
 
@@ -935,8 +1049,7 @@ pub fn set_sprite_pixel_format(
     format: PixelFormat,
     state: State<'_, SharedWorkspace>,
 ) -> Result<PixelFormat, String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
     atlas.set_pixel_format(format);
     Ok(atlas.pixel_format())
 }
@@ -972,6 +1085,8 @@ pub fn get_sprite_png(
     let Some(atlas) = checkout_atlas(&state)? else {
         return Ok(None);
     };
-    let url = atlas.sprite_data_url(sprite_id).map_err(|e| e.to_string())?;
+    let url = atlas
+        .sprite_data_url(sprite_id)
+        .map_err(|e| e.to_string())?;
     Ok(Some((*url).clone()))
 }

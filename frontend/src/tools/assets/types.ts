@@ -48,10 +48,14 @@ export interface AppearanceRow {
   id: number;
   name: string | null;
   spriteCount: number;
-  /// First sprite_id of the flattened sprite list. Used as the
-  /// row thumbnail; `null` for placeholder appearances with no
-  /// sprites attached.
-  firstSpriteId: number | null;
+  /// Sprite ids the row thumbnail cycles through. For outfits this is
+  /// the idle frame group looking south; for objects/effects/missiles
+  /// the initial frame group walked through every animation phase.
+  /// Empty when the appearance has no sprite payload at all.
+  displaySpriteIds: number[];
+  /// Per-phase duration in milliseconds, parallel to `displaySpriteIds`.
+  /// Empty when the appearance is not animated.
+  displayDurationsMs: number[];
 }
 
 export interface RecentFiles {
@@ -151,7 +155,87 @@ export interface AppearanceInfoDto {
   name: string | null;
   description: string | null;
   spriteIds: number[];
+  frameGroups: FrameGroupInfoDto[];
   flags: AppearanceFlagsDto;
+}
+
+export type FixedFrameGroupDto = "OutfitIdle" | "OutfitMoving" | "ObjectInitial";
+
+export interface FrameGroupInfoDto {
+  fixedFrameGroup: FixedFrameGroupDto | null;
+  id: number | null;
+  spriteInfo: SpriteInfoDataDto | null;
+}
+
+export interface SpriteInfoDataDto {
+  patternWidth: number | null;
+  patternHeight: number | null;
+  patternDepth: number | null;
+  layers: number | null;
+  spriteIds: number[];
+  animation: SpriteAnimationDataDto | null;
+  boundingSquare: number | null;
+  isOpaque: boolean | null;
+  boundingBoxPerDirection: BoundingBoxDto[];
+}
+
+export interface SpriteAnimationDataDto {
+  defaultStartPhase: number | null;
+  synchronized: boolean | null;
+  randomStartPhase: boolean | null;
+  loopType: "PingPong" | "Infinite" | "Counted" | null;
+  loopCount: number | null;
+  spritePhases: SpritePhaseDto[];
+}
+
+export interface SpritePhaseDto {
+  durationMin: number | null;
+  durationMax: number | null;
+}
+
+export interface BoundingBoxDto {
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+/// Resolve pattern dimensions, falling back to 1 when the proto omits
+/// the field (proto2 distinguishes absent from default-of-zero, but for
+/// these dimensions both mean "single pattern column").
+export function patternDims(si: SpriteInfoDataDto): {
+  width: number;
+  height: number;
+  depth: number;
+  layers: number;
+  phases: number;
+} {
+  return {
+    width: Math.max(1, si.patternWidth ?? 1),
+    height: Math.max(1, si.patternHeight ?? 1),
+    depth: Math.max(1, si.patternDepth ?? 1),
+    layers: Math.max(1, si.layers ?? 1),
+    phases: Math.max(1, si.animation?.spritePhases.length ?? 1),
+  };
+}
+
+/// Index into the flat `spriteIds` for a given (phase, z, y, x, layer).
+/// Returns `null` when the coordinate falls outside the declared
+/// dimensions or the flat array isn't long enough.
+export function spriteIndex(
+  si: SpriteInfoDataDto,
+  phase: number,
+  z: number,
+  y: number,
+  x: number,
+  layer: number,
+): number | null {
+  const { width, height, depth, layers, phases } = patternDims(si);
+  if (phase >= phases || z >= depth || y >= height || x >= width || layer >= layers)
+    return null;
+  const idx = ((((phase * depth + z) * height + y) * width + x) * layers + layer);
+  if (idx < 0 || idx >= si.spriteIds.length) return null;
+  return idx;
 }
 
 export interface AppearanceFlagsDto {

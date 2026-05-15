@@ -358,7 +358,7 @@ export function AttributeEditor() {
           <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold">
             Sprites
           </h3>
-          <SpritePreview spriteIds={appearance.spriteIds} />
+          <SpritePreview appearance={appearance} />
         </section>
 
         <AppearanceSection appearance={appearance} />

@@ -48,7 +48,7 @@ function filteredIds(ranges: SpriteRangeDto[], query: string): number[] | null {
 function SpriteTile({ id }: { id: number }) {
   return (
     <div className="flex flex-col items-center gap-1" title={`sprite_id ${id}`}>
-      <SpriteThumb id={id} size={64} />
+      <SpriteThumb ids={[id]} size={64} />
       <span className="text-[10px] text-atlas-muted font-mono tabular-nums">{id}</span>
     </div>
   );
