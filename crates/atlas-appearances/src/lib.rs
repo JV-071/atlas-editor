@@ -27,10 +27,12 @@ pub mod proto {
 
 pub use atlas_core::{AppearanceCategory, AssetId};
 pub use model::{
-    AppearanceFlags, AppearanceInfo, Appearances, AutomapInfo, BankInfo, ChangedToExpireInfo,
-    ClothesInfo, CyclopediaInfo, DefaultActionInfo, HeightInfo, HookInfo, ImbueableInfo,
-    LenshelpInfo, LightInfo, MarketInfo, NpcSaleInfo, ProficiencyInfo, ShiftInfo,
-    SkillWheelGemInfo, SpecialMeaningIds, UpgradeClassificationInfo, WriteInfo, WriteOnceInfo,
+    AppearanceFlags, AppearanceInfo, Appearances, AutomapInfo, BankInfo, BoundingBox,
+    ChangedToExpireInfo, ClothesInfo, CyclopediaInfo, DefaultActionInfo, FixedFrameGroup,
+    FrameGroupInfo, HeightInfo, HookInfo, ImbueableInfo, LenshelpInfo, LightInfo, MarketInfo,
+    NpcSaleInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo, SpecialMeaningIds,
+    SpriteAnimationData, SpriteInfoData, SpritePhase, UpgradeClassificationInfo, WriteInfo,
+    WriteOnceInfo,
 };
 
 impl Appearances {
@@ -247,6 +249,36 @@ mod tests {
     fn from_proto_flattens_sprite_ids_in_order() {
         let result = Appearances::from_proto(sample_proto());
         assert_eq!(result.objects[1].sprite_ids, vec![10, 11, 12, 20, 21]);
+    }
+
+    /// Locks in the iteration order convention used by the Tibia 12+
+    /// proto producer: phase → z → y → x → layer (outermost → innermost).
+    /// Concretely, for an outfit with 4 directions + 2 layers, the sprite
+    /// at south/phase0/layer0 must be index 4 in the flat list, not 2.
+    #[test]
+    fn sprite_index_follows_phase_z_y_x_layer_order() {
+        let si = model::SpriteInfoData {
+            pattern_width: Some(4),
+            pattern_height: Some(1),
+            pattern_depth: Some(1),
+            layers: Some(2),
+            // Phase 0 covers indices 0..8, phase 1 covers 8..16.
+            sprite_ids: (0..16).collect(),
+            animation: Some(model::SpriteAnimationData {
+                sprite_phases: vec![Default::default(), Default::default()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        // South, phase 0, layer 0 → x=2, layer=0 inside phase 0.
+        assert_eq!(si.sprite_at(0, 0, 0, 2, 0), Some(4));
+        // South, phase 1, layer 0 → 8 (start of phase 1) + 4.
+        assert_eq!(si.sprite_at(1, 0, 0, 2, 0), Some(12));
+        // North, phase 0, layer 0 → x=0.
+        assert_eq!(si.sprite_at(0, 0, 0, 0, 0), Some(0));
+        // Out-of-bounds returns None instead of panicking.
+        assert_eq!(si.sprite_at(2, 0, 0, 0, 0), None);
+        assert_eq!(si.sprite_at(0, 0, 0, 4, 0), None);
     }
 
     #[test]

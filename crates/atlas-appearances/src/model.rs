@@ -2,20 +2,21 @@
 //!
 //! These mirror the protobuf schema closely but drop the proto-specific
 //! types in favor of plain Rust + serde. The `from_proto` constructor
-//! preserves every flag field the schema defines today. Two known sources
-//! of asymmetry, both intentional for the v0 reader-side UX:
+//! preserves every flag field the schema defines today. One known source
+//! of asymmetry, intentional for the v0 reader-side UX:
 //!
 //! - `proto2` distinguishes "scalar absent" from "scalar present with the
 //!   default value"; for nested scalar-Option fields (e.g. `bank.waypoints`)
 //!   the model collapses both to `0`. The outer sub-message presence is
 //!   still preserved through `Option<BankInfo>` etc.
-//! - Frame groups are flattened into [`AppearanceInfo::sprite_ids`] in source
-//!   order; the per-`FrameGroup` metadata (animation timings, bounding
-//!   boxes, pattern dimensions) is not surfaced yet. Phase 4 (sprite
-//!   rendering) and Phase 3 (round-trip save) will revisit this.
+//!
+//! Frame groups, including pattern dimensions and animation timings, are
+//! preserved through [`AppearanceInfo::frame_groups`]; [`AppearanceInfo::sprite_ids`]
+//! is a flattened convenience view computed from them in source order.
 
 use atlas_core::{
-    AppearanceCategory, AssetId, HookType, ItemCategory, PlayerAction, Vocation, WeaponType,
+    AnimationLoopType, AppearanceCategory, AssetId, HookType, ItemCategory, PlayerAction, Vocation,
+    WeaponType,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,13 +47,12 @@ pub struct Appearances {
 }
 
 /// A single appearance entry — id, optional human-readable strings, all
-/// flags, and a flat list of sprite ids gathered from every frame group in
-/// source order.
+/// flags, the structured frame groups carrying sprite layout + animation
+/// data, plus a flat convenience view of every sprite id in source order.
 ///
-/// The flattening of `frame_group` is lossy with respect to the original
-/// proto: animation timings and bounding boxes are dropped. Phase 3
-/// (round-trip save) will restore that data by either keeping the source
-/// proto alongside the neutral view, or by extending the model.
+/// `sprite_ids` is derived from `frame_groups` and only kept on the model
+/// so existing callers that just want a list of ids (the Sprites tab,
+/// debug dumps) don't have to walk the frame group tree.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearanceInfo {
@@ -61,7 +61,136 @@ pub struct AppearanceInfo {
     pub name: Option<String>,
     pub description: Option<String>,
     pub flags: AppearanceFlags,
+    pub frame_groups: Vec<FrameGroupInfo>,
     pub sprite_ids: Vec<u32>,
+}
+
+/// One `FrameGroup` from the proto. The pair `(fixed_frame_group, id)` is
+/// the proto's way of identifying which animation state this group describes
+/// (e.g. outfit idle vs moving). `sprite_info` is `None` only for the
+/// degenerate proto frame groups that carry no sprite payload at all.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameGroupInfo {
+    pub fixed_frame_group: Option<FixedFrameGroup>,
+    pub id: Option<u32>,
+    pub sprite_info: Option<SpriteInfoData>,
+}
+
+/// Which animation state a frame group describes. Mirrors proto
+/// `FIXED_FRAME_GROUP`. Object appearances typically use a single
+/// `ObjectInitial` group; outfits use `OutfitIdle` + `OutfitMoving`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum FixedFrameGroup {
+    OutfitIdle = 0,
+    OutfitMoving = 1,
+    ObjectInitial = 2,
+}
+
+impl FixedFrameGroup {
+    pub fn from_i32(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::OutfitIdle),
+            1 => Some(Self::OutfitMoving),
+            2 => Some(Self::ObjectInitial),
+            _ => None,
+        }
+    }
+}
+
+/// Payload of a single `SpriteInfo`. Pattern dimensions are stored as
+/// `Option<u32>` to preserve the proto's "absent vs. present" distinction
+/// — `None` is the implicit-default-of-one case (see [`SpriteInfoData::effective_pattern_width`]
+/// and friends for the resolved values).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpriteInfoData {
+    pub pattern_width: Option<u32>,
+    pub pattern_height: Option<u32>,
+    pub pattern_depth: Option<u32>,
+    pub layers: Option<u32>,
+    pub sprite_ids: Vec<u32>,
+    pub animation: Option<SpriteAnimationData>,
+    pub bounding_square: Option<u32>,
+    pub is_opaque: Option<bool>,
+    pub bounding_box_per_direction: Vec<BoundingBox>,
+}
+
+impl SpriteInfoData {
+    pub fn effective_pattern_width(&self) -> u32 {
+        self.pattern_width.unwrap_or(1).max(1)
+    }
+    pub fn effective_pattern_height(&self) -> u32 {
+        self.pattern_height.unwrap_or(1).max(1)
+    }
+    pub fn effective_pattern_depth(&self) -> u32 {
+        self.pattern_depth.unwrap_or(1).max(1)
+    }
+    pub fn effective_layers(&self) -> u32 {
+        self.layers.unwrap_or(1).max(1)
+    }
+    /// Number of animation phases (>= 1). A `SpriteInfo` without an
+    /// animation block is treated as a single phase.
+    pub fn phase_count(&self) -> u32 {
+        self.animation
+            .as_ref()
+            .map(|a| a.sprite_phases.len().max(1) as u32)
+            .unwrap_or(1)
+    }
+
+    /// Index into [`Self::sprite_ids`] for a given (phase, z, y, x, layer).
+    /// Returns `None` when any coordinate is out of bounds or the flat list
+    /// doesn't have enough entries (malformed input).
+    ///
+    /// Iteration order matches the proto producer convention used by Tibia
+    /// 12+ clients: outermost `phase`, then `z`, `y`, `x`, innermost `layer`.
+    pub fn sprite_index(&self, phase: u32, z: u32, y: u32, x: u32, layer: u32) -> Option<usize> {
+        let pw = self.effective_pattern_width();
+        let ph = self.effective_pattern_height();
+        let pd = self.effective_pattern_depth();
+        let layers = self.effective_layers();
+        if x >= pw || y >= ph || z >= pd || layer >= layers || phase >= self.phase_count() {
+            return None;
+        }
+        let idx = ((((phase * pd + z) * ph + y) * pw + x) * layers + layer) as usize;
+        if idx >= self.sprite_ids.len() {
+            return None;
+        }
+        Some(idx)
+    }
+
+    pub fn sprite_at(&self, phase: u32, z: u32, y: u32, x: u32, layer: u32) -> Option<u32> {
+        self.sprite_index(phase, z, y, x, layer)
+            .map(|i| self.sprite_ids[i])
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpriteAnimationData {
+    pub default_start_phase: Option<u32>,
+    pub synchronized: Option<bool>,
+    pub random_start_phase: Option<bool>,
+    pub loop_type: Option<AnimationLoopType>,
+    pub loop_count: Option<u32>,
+    pub sprite_phases: Vec<SpritePhase>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpritePhase {
+    pub duration_min: Option<u32>,
+    pub duration_max: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoundingBox {
+    pub x: Option<u32>,
+    pub y: Option<u32>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
 }
 
 /// Hard-coded protocol ids the client uses for currency, mail, supply stash, etc.
@@ -293,13 +422,12 @@ impl Appearances {
         }
     }
 
-    /// Re-emit the neutral model as a proto message. **Lossy with respect
-    /// to the original `frame_group` structure**: all sprite ids are
-    /// collapsed into a single anonymous `FrameGroup` since the model
-    /// only carries the flattened id list. Animation timings, bounding
-    /// boxes, and pattern dimensions therefore do not survive a save.
-    /// This is fine for v1 (attribute editor) but Phase 4 (sprites) will
-    /// likely need to preserve the original frame group payload.
+    /// Re-emit the neutral model as a proto message. Frame-group
+    /// structure (pattern dimensions, animation timings, bounding boxes)
+    /// is preserved end-to-end through [`AppearanceInfo::frame_groups`].
+    /// As a fallback for legacy paths that only populate `sprite_ids`
+    /// (e.g. brand-new appearances created in the UI), the writer
+    /// collapses that flat list into a single anonymous frame group.
     pub fn to_proto(&self) -> proto::Appearances {
         proto::Appearances {
             object: self.objects.iter().map(appearance_to_proto).collect(),
@@ -322,11 +450,15 @@ fn convert_category(
 }
 
 fn appearance_from_proto(a: proto::Appearance, category: AppearanceCategory) -> AppearanceInfo {
-    let sprite_ids: Vec<u32> = a
+    let frame_groups: Vec<FrameGroupInfo> = a
         .frame_group
         .into_iter()
-        .filter_map(|fg| fg.sprite_info)
-        .flat_map(|si| si.sprite_id)
+        .map(frame_group_from_proto)
+        .collect();
+    let sprite_ids: Vec<u32> = frame_groups
+        .iter()
+        .filter_map(|fg| fg.sprite_info.as_ref())
+        .flat_map(|si| si.sprite_ids.iter().copied())
         .collect();
 
     AppearanceInfo {
@@ -335,7 +467,57 @@ fn appearance_from_proto(a: proto::Appearance, category: AppearanceCategory) -> 
         name: a.name.map(decode_client_string),
         description: a.description.map(decode_client_string),
         flags: a.flags.map(AppearanceFlags::from_proto).unwrap_or_default(),
+        frame_groups,
         sprite_ids,
+    }
+}
+
+fn frame_group_from_proto(fg: proto::FrameGroup) -> FrameGroupInfo {
+    FrameGroupInfo {
+        fixed_frame_group: fg.fixed_frame_group.and_then(FixedFrameGroup::from_i32),
+        id: fg.id,
+        sprite_info: fg.sprite_info.map(sprite_info_from_proto),
+    }
+}
+
+fn sprite_info_from_proto(si: proto::SpriteInfo) -> SpriteInfoData {
+    SpriteInfoData {
+        pattern_width: si.pattern_width,
+        pattern_height: si.pattern_height,
+        pattern_depth: si.pattern_depth,
+        layers: si.layers,
+        sprite_ids: si.sprite_id,
+        animation: si.animation.map(sprite_animation_from_proto),
+        bounding_square: si.bounding_square,
+        is_opaque: si.is_opaque,
+        bounding_box_per_direction: si
+            .bounding_box_per_direction
+            .into_iter()
+            .map(|b| BoundingBox {
+                x: b.x,
+                y: b.y,
+                width: b.width,
+                height: b.height,
+            })
+            .collect(),
+    }
+}
+
+fn sprite_animation_from_proto(a: proto::SpriteAnimation) -> SpriteAnimationData {
+    SpriteAnimationData {
+        default_start_phase: a.default_start_phase,
+        synchronized: a.synchronized,
+        random_start_phase: a.random_start_phase,
+        loop_type: a.loop_type.map(AnimationLoopType::from_i32),
+        loop_count: a.loop_count,
+        sprite_phases: a
+            .sprite_phase
+            .into_iter()
+            .map(|p| SpritePhase {
+                duration_min: p.duration_min,
+                duration_max: p.duration_max,
+            })
+            .collect(),
     }
 }
 
@@ -639,9 +821,16 @@ fn opt_bool(b: bool) -> Option<bool> {
 }
 
 fn appearance_to_proto(a: &AppearanceInfo) -> proto::Appearance {
-    let frame_group = if a.sprite_ids.is_empty() {
+    let frame_group = if !a.frame_groups.is_empty() {
+        a.frame_groups.iter().map(frame_group_to_proto).collect()
+    } else if a.sprite_ids.is_empty() {
+        // No structure, no flat list — emit no frame groups at all so the
+        // round-trip preserves the empty case.
         vec![]
     } else {
+        // Legacy fallback: callers that only filled the flat `sprite_ids`
+        // (brand-new appearances) get one anonymous frame group with no
+        // pattern dimensions, mirroring the pre-frame-group writer.
         vec![proto::FrameGroup {
             fixed_frame_group: None,
             id: Some(0),
@@ -657,6 +846,55 @@ fn appearance_to_proto(a: &AppearanceInfo) -> proto::Appearance {
         flags: Some(a.flags.to_proto()),
         name: a.name.as_ref().map(|s| s.as_bytes().to_vec()),
         description: a.description.as_ref().map(|s| s.as_bytes().to_vec()),
+    }
+}
+
+fn frame_group_to_proto(fg: &FrameGroupInfo) -> proto::FrameGroup {
+    proto::FrameGroup {
+        fixed_frame_group: fg.fixed_frame_group.map(|f| f as i32),
+        id: fg.id,
+        sprite_info: fg.sprite_info.as_ref().map(sprite_info_to_proto),
+    }
+}
+
+fn sprite_info_to_proto(si: &SpriteInfoData) -> proto::SpriteInfo {
+    proto::SpriteInfo {
+        pattern_width: si.pattern_width,
+        pattern_height: si.pattern_height,
+        pattern_depth: si.pattern_depth,
+        layers: si.layers,
+        sprite_id: si.sprite_ids.clone(),
+        animation: si.animation.as_ref().map(sprite_animation_to_proto),
+        bounding_square: si.bounding_square,
+        is_opaque: si.is_opaque,
+        bounding_box_per_direction: si
+            .bounding_box_per_direction
+            .iter()
+            .map(|b| proto::Box {
+                x: b.x,
+                y: b.y,
+                width: b.width,
+                height: b.height,
+            })
+            .collect(),
+    }
+}
+
+fn sprite_animation_to_proto(a: &SpriteAnimationData) -> proto::SpriteAnimation {
+    proto::SpriteAnimation {
+        default_start_phase: a.default_start_phase,
+        synchronized: a.synchronized,
+        random_start_phase: a.random_start_phase,
+        loop_type: a.loop_type.map(|t| t as i32),
+        loop_count: a.loop_count,
+        sprite_phase: a
+            .sprite_phases
+            .iter()
+            .map(|p| proto::SpritePhase {
+                duration_min: p.duration_min,
+                duration_max: p.duration_max,
+            })
+            .collect(),
     }
 }
 
