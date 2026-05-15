@@ -97,4 +97,17 @@ export const es: Record<MessageKey, string> = {
     "GIF animado que recorre todas las phases una vez y entra en loop.",
   "export.hint.missilegif":
     "GIF animado recorriendo 8 direcciones en sentido horario desde el Norte.",
+
+  "queue.title": "Cola de export",
+  "queue.empty": "La cola está vacía. Marca filas en la lista para llenarla.",
+  "queue.count": "{count} en cola",
+  "queue.addToQueue": "Añadir a la cola de export",
+  "queue.removeFromQueue": "Quitar de la cola de export",
+  "queue.clear": "Vaciar cola",
+  "queue.runAll": "Ejecutar todo",
+  "queue.pickFolder": "Elegir carpeta de salida",
+  "queue.summary": "{done} de {total} exportados, {errors} error(es)",
+  "queue.status.running": "Corriendo…",
+  "queue.status.done": "Listo",
+  "queue.status.error": "Falló",
 };

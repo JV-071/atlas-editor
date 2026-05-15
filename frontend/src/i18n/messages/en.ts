@@ -100,6 +100,19 @@ export const en = {
     "Animated GIF that walks through every phase once and loops.",
   "export.hint.missilegif":
     "Animated GIF cycling 8 directions clockwise from North.",
+
+  "queue.title": "Export queue",
+  "queue.empty": "The queue is empty. Pick rows in the list to fill it.",
+  "queue.count": "{count} queued",
+  "queue.addToQueue": "Add to export queue",
+  "queue.removeFromQueue": "Remove from export queue",
+  "queue.clear": "Clear queue",
+  "queue.runAll": "Run all",
+  "queue.pickFolder": "Choose output folder",
+  "queue.summary": "{done} of {total} exported, {errors} error(s)",
+  "queue.status.running": "Running…",
+  "queue.status.done": "Done",
+  "queue.status.error": "Failed",
 } as const;
 
 export type MessageKey = keyof typeof en;

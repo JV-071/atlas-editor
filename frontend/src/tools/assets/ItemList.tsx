@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Filter, Plus, Search, X } from "lucide-react";
+import { CheckSquare, Filter, Plus, Search, Square, X } from "lucide-react";
 
 import { SpriteGrid } from "./SpriteGrid";
 import { SpriteThumb } from "./SpriteThumb";
-import { useWorkspace } from "./store";
+import { queueKey, useWorkspace } from "./store";
 import {
   FLAG_BITS,
   FLAG_NAMES,
@@ -160,6 +160,8 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
   const selectedId = useWorkspace((s) => s.selectedId);
   const setSelected = useWorkspace((s) => s.setSelected);
   const createObjectAppearance = useWorkspace((s) => s.createObjectAppearance);
+  const exportQueue = useWorkspace((s) => s.exportQueue);
+  const toggleExportQueueEntry = useWorkspace((s) => s.toggleExportQueueEntry);
   const t = useT();
 
   // Flag filter is per-category — switching tabs shouldn't drag the
@@ -235,11 +237,11 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
             {virtualizer.getVirtualItems().map((vrow) => {
               const row = filtered[vrow.index];
               const selected = row.id === selectedId;
+              const queued = exportQueue.has(queueKey(category, row.id));
+              const canQueue = row.displaySpriteIds.length > 0;
               return (
-                <button
+                <div
                   key={row.id}
-                  type="button"
-                  onClick={() => void setSelected(row.id)}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -249,13 +251,46 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                     transform: `translateY(${vrow.start}px)`,
                   }}
                   className={cn(
-                    "flex items-center gap-2 px-2 text-left text-sm transition-colors",
+                    "flex items-center gap-2 px-2 text-left text-sm transition-colors group",
                     "hover:bg-atlas-sand",
                     selected
                       ? "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink"
                       : "text-atlas-ink",
                   )}
                 >
+                  <button
+                    type="button"
+                    onClick={() => canQueue && toggleExportQueueEntry(category, row.id)}
+                    disabled={!canQueue}
+                    title={
+                      queued ? t("queue.removeFromQueue") : t("queue.addToQueue")
+                    }
+                    className={cn(
+                      "shrink-0 rounded p-0.5 transition-opacity",
+                      queued
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+                      selected
+                        ? queued
+                          ? "text-atlas-cream"
+                          : "text-atlas-cream/70 hover:text-atlas-cream"
+                        : queued
+                          ? "text-emerald-700"
+                          : "text-atlas-muted hover:text-atlas-ink",
+                      "disabled:opacity-0 disabled:cursor-not-allowed",
+                    )}
+                  >
+                    {queued ? (
+                      <CheckSquare className="h-3.5 w-3.5" />
+                    ) : (
+                      <Square className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setSelected(row.id)}
+                    className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                  >
                   <span
                     className={cn(
                       "w-12 shrink-0 text-right font-mono text-xs tabular-nums",
@@ -301,7 +336,8 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                   >
                     {row.spriteCount}
                   </span>
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>

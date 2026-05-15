@@ -27,6 +27,7 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 import {
   APPEARANCE_CATEGORIES,
+  defaultExportFormat,
   emptyRecent,
   emptyRowsByCategory,
   emptySummary,
@@ -36,6 +37,8 @@ import {
   type AssetsBundleResult,
   type AssetsDirInfo,
   type Category,
+  type ExportFormat,
+  type ExportReport,
   type PixelFormat,
   type RecentFiles,
   type SpriteRangeDto,
@@ -45,6 +48,29 @@ import {
 export type AppView = "launcher" | "editor";
 
 type LoadStatus = "idle" | "loading" | "error";
+
+/// One entry in the batch-export queue. Stored as a flat key so the
+/// queue can dedupe with Set-style semantics and so lookups from
+/// `ItemList` don't have to walk an array per row.
+export interface ExportQueueEntry {
+  category: AppearanceCategory;
+  id: number;
+}
+
+export function queueKey(category: AppearanceCategory, id: number): string {
+  return `${category}:${id}`;
+}
+
+/// Per-item progress event surfaced while the queue runs, so the UI can
+/// render a live status list instead of guessing how far we got.
+export interface ExportQueueProgress {
+  index: number;
+  total: number;
+  entry: ExportQueueEntry;
+  status: "running" | "done" | "error";
+  error?: string;
+  files?: number;
+}
 
 interface WorkspaceState {
   view: AppView;
@@ -64,6 +90,13 @@ interface WorkspaceState {
   assetsDir: AssetsDirInfo | null;
   pixelFormat: PixelFormat;
   spriteCacheBust: number;
+
+  /// Session-only batch export queue. Map (not Set) keyed by
+  /// `category:id` so adding the same row twice is a no-op.
+  exportQueue: Map<string, ExportQueueEntry>;
+  /// Live progress for the currently running batch, or `null` when the
+  /// queue is idle.
+  exportProgress: ExportQueueProgress[] | null;
 
   setQuery: (query: string) => void;
   setSelected: (id: number | null) => Promise<void>;
@@ -89,6 +122,13 @@ interface WorkspaceState {
   refreshPixelFormat: () => Promise<void>;
 
   createObjectAppearance: () => Promise<void>;
+
+  toggleExportQueueEntry: (category: AppearanceCategory, id: number) => void;
+  clearExportQueue: () => void;
+  /// Iterate the queue, calling `export_appearance` for each item.
+  /// Returns `null` if the user cancels the folder picker, otherwise
+  /// the report of every per-item attempt.
+  runExportQueue: (outputDir: string) => Promise<ExportQueueProgress[]>;
 }
 
 async function fetchAllCategories(): Promise<Record<AppearanceCategory, AppearanceRow[]>> {
@@ -152,6 +192,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   assetsDir: null,
   pixelFormat: "bgra",
   spriteCacheBust: 0,
+  exportQueue: new Map(),
+  exportProgress: null,
 
   setQuery: (query) => set({ query }),
   setCategory: (category) =>
@@ -361,5 +403,69 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     }
+  },
+
+  toggleExportQueueEntry(category, id) {
+    const next = new Map(get().exportQueue);
+    const key = queueKey(category, id);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.set(key, { category, id });
+    }
+    set({ exportQueue: next });
+  },
+
+  clearExportQueue() {
+    set({ exportQueue: new Map(), exportProgress: null });
+  },
+
+  async runExportQueue(outputDir) {
+    const entries = Array.from(get().exportQueue.values());
+    if (entries.length === 0) return [];
+    // Track progress in-memory and surface it through `exportProgress`
+    // so the popover can render a live status list. We rebuild the
+    // array on every event because zustand only re-renders on
+    // reference equality.
+    const progress: ExportQueueProgress[] = entries.map((entry, index) => ({
+      index,
+      total: entries.length,
+      entry,
+      status: "running",
+    }));
+    set({ exportProgress: progress.slice() });
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const format: ExportFormat = defaultExportFormat(entry.category);
+      const baseName = `${entry.category}-${entry.id}`;
+      const outputPath =
+        format === "outfitpngs"
+          ? `${outputDir}/${baseName}`
+          : `${outputDir}/${baseName}.gif`;
+      progress[i].status = "running";
+      set({ exportProgress: progress.slice() });
+      try {
+        const report = await invoke<ExportReport>("export_appearance", {
+          scope: entry.category,
+          id: entry.id,
+          format,
+          outputPath,
+        });
+        progress[i] = {
+          ...progress[i],
+          status: "done",
+          files: report.files.length,
+        };
+      } catch (e) {
+        progress[i] = {
+          ...progress[i],
+          status: "error",
+          error: String(e),
+        };
+      }
+      set({ exportProgress: progress.slice() });
+    }
+    return progress;
   },
 }));

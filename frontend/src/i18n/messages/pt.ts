@@ -97,4 +97,17 @@ export const pt: Record<MessageKey, string> = {
     "GIF animado que percorre todas as phases uma vez e loopa.",
   "export.hint.missilegif":
     "GIF animado ciclando 8 direções no sentido horário a partir do Norte.",
+
+  "queue.title": "Fila de export",
+  "queue.empty": "A fila está vazia. Marque linhas na lista para preencher.",
+  "queue.count": "{count} na fila",
+  "queue.addToQueue": "Adicionar à fila de export",
+  "queue.removeFromQueue": "Remover da fila de export",
+  "queue.clear": "Limpar fila",
+  "queue.runAll": "Executar tudo",
+  "queue.pickFolder": "Escolher pasta de saída",
+  "queue.summary": "{done} de {total} exportados, {errors} erro(s)",
+  "queue.status.running": "Rodando…",
+  "queue.status.done": "Pronto",
+  "queue.status.error": "Falhou",
 };
