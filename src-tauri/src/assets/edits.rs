@@ -5,8 +5,13 @@
 //! applies the change. Errors come back as strings so the frontend can
 //! show them inline without a typed error envelope.
 
-use atlas_appearances::{AppearanceInfo, Appearances, ImbueableInfo, LightInfo, MarketInfo};
-use atlas_core::{ItemCategory, Vocation, WeaponType};
+use atlas_appearances::{
+    AppearanceInfo, Appearances, AutomapInfo, BankInfo, ChangedToExpireInfo, ClothesInfo,
+    CyclopediaInfo, DefaultActionInfo, HeightInfo, HookInfo, ImbueableInfo, LenshelpInfo, LightInfo,
+    MarketInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo, UpgradeClassificationInfo,
+    WriteInfo, WriteOnceInfo,
+};
+use atlas_core::{HookType, ItemCategory, PlayerAction, Vocation, WeaponType};
 use atlas_otb::{ExpireFlags, ItemGroup, Otb, OtbItem};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
@@ -50,8 +55,8 @@ fn apply_appearance_field(a: &mut AppearanceInfo, field: &str, value: Value) -> 
             a.description = optional_string(&value, field)?;
             Ok(())
         }
-        // Boolean flags. Add new ones here as the UI grows — the schema
-        // on the frontend should mirror this list exactly.
+        // Boolean flags. Order mirrors `AppearanceFlags` in atlas-appearances
+        // so it's easy to spot a missing one.
         "flags.container" => set_bool(&mut a.flags.container, value, field),
         "flags.cumulative" => set_bool(&mut a.flags.cumulative, value, field),
         "flags.usable" => set_bool(&mut a.flags.usable, value, field),
@@ -75,7 +80,27 @@ fn apply_appearance_field(a: &mut AppearanceInfo, field: &str, value: Value) -> 
         "flags.unwrap" => set_bool(&mut a.flags.unwrap, value, field),
         "flags.corpse" => set_bool(&mut a.flags.corpse, value, field),
         "flags.player_corpse" => set_bool(&mut a.flags.player_corpse, value, field),
-        // Scalar fields.
+        "flags.clip" => set_bool(&mut a.flags.clip, value, field),
+        "flags.bottom" => set_bool(&mut a.flags.bottom, value, field),
+        "flags.top" => set_bool(&mut a.flags.top, value, field),
+        "flags.fullbank" => set_bool(&mut a.flags.fullbank, value, field),
+        "flags.topeffect" => set_bool(&mut a.flags.topeffect, value, field),
+        "flags.lying_object" => set_bool(&mut a.flags.lying_object, value, field),
+        "flags.translucent" => set_bool(&mut a.flags.translucent, value, field),
+        "flags.dont_hide" => set_bool(&mut a.flags.dont_hide, value, field),
+        "flags.no_movement_animation" => set_bool(&mut a.flags.no_movement_animation, value, field),
+        "flags.animate_always" => set_bool(&mut a.flags.animate_always, value, field),
+        "flags.reverse_addons_east" => set_bool(&mut a.flags.reverse_addons_east, value, field),
+        "flags.reverse_addons_west" => set_bool(&mut a.flags.reverse_addons_west, value, field),
+        "flags.reverse_addons_south" => set_bool(&mut a.flags.reverse_addons_south, value, field),
+        "flags.reverse_addons_north" => set_bool(&mut a.flags.reverse_addons_north, value, field),
+        "flags.wearout" => set_bool(&mut a.flags.wearout, value, field),
+        "flags.clockexpire" => set_bool(&mut a.flags.clockexpire, value, field),
+        "flags.expire" => set_bool(&mut a.flags.expire, value, field),
+        "flags.expirestop" => set_bool(&mut a.flags.expirestop, value, field),
+        "flags.deco_item_kit" => set_bool(&mut a.flags.deco_item_kit, value, field),
+
+        // Combat / requirements.
         "flags.minimum_level" => {
             a.flags.minimum_level = optional_u32(&value, field)?;
             Ok(())
@@ -84,27 +109,67 @@ fn apply_appearance_field(a: &mut AppearanceInfo, field: &str, value: Value) -> 
             a.flags.weapon_type = optional_enum::<WeaponType>(&value, field)?;
             Ok(())
         }
+        "flags.restrict_to_vocation" => {
+            a.flags.restrict_to_vocation = enum_vec::<Vocation>(&value, field)?;
+            Ok(())
+        }
+
+        // Composite sub-messages — `null` clears the entry; an object
+        // replaces it wholesale. The frontend always sends the full
+        // current state, so we never have to merge partial updates.
+        "flags.bank" => set_composite::<BankInfo>(&mut a.flags.bank, value, field),
+        "flags.write" => set_composite::<WriteInfo>(&mut a.flags.write, value, field),
+        "flags.write_once" => set_composite::<WriteOnceInfo>(&mut a.flags.write_once, value, field),
+        "flags.hook" => set_composite::<HookInfo>(&mut a.flags.hook, value, field),
+        "flags.light" => set_composite::<LightInfo>(&mut a.flags.light, value, field),
+        "flags.shift" => set_composite::<ShiftInfo>(&mut a.flags.shift, value, field),
+        "flags.height" => set_composite::<HeightInfo>(&mut a.flags.height, value, field),
+        "flags.automap" => set_composite::<AutomapInfo>(&mut a.flags.automap, value, field),
+        "flags.lenshelp" => set_composite::<LenshelpInfo>(&mut a.flags.lenshelp, value, field),
+        "flags.clothes" => set_composite::<ClothesInfo>(&mut a.flags.clothes, value, field),
+        "flags.default_action" => {
+            set_composite::<DefaultActionInfo>(&mut a.flags.default_action, value, field)
+        }
+        "flags.market" => set_composite::<MarketInfo>(&mut a.flags.market, value, field),
+        "flags.changed_to_expire" => {
+            set_composite::<ChangedToExpireInfo>(&mut a.flags.changed_to_expire, value, field)
+        }
+        "flags.cyclopedia_item" => {
+            set_composite::<CyclopediaInfo>(&mut a.flags.cyclopedia_item, value, field)
+        }
+        "flags.upgrade_classification" => set_composite::<UpgradeClassificationInfo>(
+            &mut a.flags.upgrade_classification,
+            value,
+            field,
+        ),
+        "flags.skillwheel_gem" => {
+            set_composite::<SkillWheelGemInfo>(&mut a.flags.skillwheel_gem, value, field)
+        }
+        "flags.imbueable" => set_composite::<ImbueableInfo>(&mut a.flags.imbueable, value, field),
+        "flags.proficiency" => {
+            set_composite::<ProficiencyInfo>(&mut a.flags.proficiency, value, field)
+        }
+
+        // Legacy per-field handlers kept for the parts of the UI that
+        // haven't switched to whole-composite updates yet.
         "flags.market.category" => {
             let category = optional_enum::<ItemCategory>(&value, field)?;
             let market = a.flags.market.get_or_insert_with(MarketInfo::default);
             market.category = category;
             Ok(())
         }
-        "flags.imbueable.slot_count" => {
-            // `null` clears the imbueable sub-message; a number ensures
-            // it exists and sets the slot count.
-            match value {
-                Value::Null => {
-                    a.flags.imbueable = None;
-                }
-                Value::Number(n) => {
-                    let count = n.as_u64().ok_or("imbueable.slot_count must be unsigned")? as u32;
-                    a.flags.imbueable = Some(ImbueableInfo { slot_count: count });
-                }
-                _ => return Err(format!("{field} expects number or null")),
+        "flags.imbueable.slot_count" => match value {
+            Value::Null => {
+                a.flags.imbueable = None;
+                Ok(())
             }
-            Ok(())
-        }
+            Value::Number(n) => {
+                let count = n.as_u64().ok_or("imbueable.slot_count must be unsigned")? as u32;
+                a.flags.imbueable = Some(ImbueableInfo { slot_count: count });
+                Ok(())
+            }
+            _ => Err(format!("{field} expects number or null")),
+        },
         "flags.light.brightness" => {
             let n = require_u32(&value, field)?;
             let light = a.flags.light.get_or_insert_with(LightInfo::default);
@@ -117,11 +182,54 @@ fn apply_appearance_field(a: &mut AppearanceInfo, field: &str, value: Value) -> 
             light.color = n;
             Ok(())
         }
-        "flags.restrict_to_vocation" => {
-            a.flags.restrict_to_vocation = enum_vec::<Vocation>(&value, field)?;
+
+        // Hook.direction needs special-casing — HookInfo is non-Default
+        // because the direction is required, so we can't use the generic
+        // `get_or_insert_with(HookInfo::default)` trick.
+        "flags.hook.direction" => match value {
+            Value::Null => {
+                a.flags.hook = None;
+                Ok(())
+            }
+            _ => {
+                let direction: HookType =
+                    serde_json::from_value(value).map_err(|e| format!("{field}: {e}"))?;
+                a.flags.hook = Some(HookInfo { direction });
+                Ok(())
+            }
+        },
+        "flags.default_action.action" => {
+            let action = optional_enum::<PlayerAction>(&value, field)?;
+            let info = a
+                .flags
+                .default_action
+                .get_or_insert_with(DefaultActionInfo::default);
+            info.action = action;
             Ok(())
         }
+
         _ => Err(format!("unknown appearance field: {field}")),
+    }
+}
+
+/// Replace an `Option<T>`-shaped sub-message with the JSON value's
+/// contents. `null` clears the slot; an object is deserialized into
+/// `T`. Anything else is a 400.
+fn set_composite<T: DeserializeOwned>(
+    slot: &mut Option<T>,
+    value: Value,
+    field: &str,
+) -> Result<(), String> {
+    match value {
+        Value::Null => {
+            *slot = None;
+            Ok(())
+        }
+        v => {
+            let parsed: T = serde_json::from_value(v).map_err(|e| format!("{field}: {e}"))?;
+            *slot = Some(parsed);
+            Ok(())
+        }
     }
 }
 

@@ -283,7 +283,55 @@ export function spriteIndex(
   return idx;
 }
 
+export type HookDirection = "South" | "East";
+export const HOOK_DIRECTIONS: HookDirection[] = ["South", "East"];
+
+export type PlayerAction =
+  | "None"
+  | "Look"
+  | "Use"
+  | "Open"
+  | "AutowalkHighlight";
+export const PLAYER_ACTIONS: PlayerAction[] = [
+  "None",
+  "Look",
+  "Use",
+  "Open",
+  "AutowalkHighlight",
+];
+
+export const ITEM_CATEGORIES: ItemCategoryEnum[] = [
+  "Armors",
+  "Amulets",
+  "Boots",
+  "Containers",
+  "Decoration",
+  "Food",
+  "HelmetsHats",
+  "Legs",
+  "Others",
+  "Potions",
+  "Rings",
+  "Runes",
+  "Shields",
+  "Tools",
+  "Valuables",
+  "Ammunition",
+  "Axes",
+  "Clubs",
+  "DistanceWeapons",
+  "Swords",
+  "WandsRods",
+  "PremiumScrolls",
+  "TibiaCoins",
+  "CreatureProducts",
+  "Quiver",
+  "SoulCores",
+  "FistWeapons",
+];
+
 export interface AppearanceFlagsDto {
+  // Behavior / interaction.
   container: boolean;
   cumulative: boolean;
   usable: boolean;
@@ -308,16 +356,62 @@ export interface AppearanceFlagsDto {
   corpse: boolean;
   playerCorpse: boolean;
 
+  // Stacking / visual layer.
+  clip: boolean;
+  bottom: boolean;
+  top: boolean;
+  fullbank: boolean;
+  topeffect: boolean;
+  lyingObject: boolean;
+  translucent: boolean;
+  dontHide: boolean;
+  noMovementAnimation: boolean;
+  animateAlways: boolean;
+
+  // Outfit-only mirroring flags.
+  reverseAddonsEast: boolean;
+  reverseAddonsWest: boolean;
+  reverseAddonsSouth: boolean;
+  reverseAddonsNorth: boolean;
+
+  // Expiration.
+  wearout: boolean;
+  clockexpire: boolean;
+  expire: boolean;
+  expirestop: boolean;
+
+  // Misc.
+  decoItemKit: boolean;
+
+  // Combat / requirements.
   minimumLevel: number | null;
   weaponType: WeaponType | null;
   restrictToVocation: Vocation[];
-  imbueable: { slotCount: number } | null;
+
+  // Composite sub-messages.
+  bank: { waypoints: number } | null;
+  write: { maxTextLength: number } | null;
+  writeOnce: { maxTextLengthOnce: number } | null;
+  hook: { direction: HookDirection } | null;
+  light: { brightness: number; color: number } | null;
+  shift: { x: number; y: number } | null;
+  height: { elevation: number } | null;
+  automap: { color: number } | null;
+  lenshelp: { id: number } | null;
+  clothes: { slot: number } | null;
+  defaultAction: { action: PlayerAction | null } | null;
   market: {
     category: ItemCategoryEnum | null;
     tradeAsObjectId: number | null;
     showAsObjectId: number | null;
   } | null;
-  light: { brightness: number; color: number } | null;
+  changedToExpire: { formerObjectTypeid: number } | null;
+  cyclopediaItem: { cyclopediaType: number } | null;
+  upgradeClassification: { upgradeClassification: number } | null;
+  skillwheelGem: { gemQualityId: number | null; vocationId: number | null } | null;
+  imbueable: { slotCount: number } | null;
+  proficiency: { proficiencyId: number } | null;
+
   [key: string]: unknown;
 }
 
