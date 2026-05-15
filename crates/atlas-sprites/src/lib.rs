@@ -23,8 +23,8 @@
 //!     LZMA header is bogus on Tibia sheets, so we tell `lzma-rs` to
 //!     ignore it and read until the end of the stream.
 //!   - Decompressed output is raw BGRA pixel data for a 384×384 sheet.
-//!   If your client uses BMP-wrapped sheets, set
-//!   `Atlas::with_bmp_wrap(true)`.
+//!     If your client uses BMP-wrapped sheets, set
+//!     `Atlas::with_bmp_wrap(true)`.
 //! - The crate is **read-only** for now. Writing new sprite sheets is a
 //!   Phase 7 concern and will live in a separate module.
 
@@ -51,27 +51,21 @@ pub use atlas_core::AssetId;
 /// so the pixel format can be flipped with `&self` (no exterior lock)
 /// — which is what enables sprite reads to share a single
 /// `Arc<Atlas>` without serializing through a workspace-level mutex.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
 pub enum PixelFormat {
     /// Bytes on disk are B, G, R, A. Swap to R, G, B, A on read.
     Bgra = 0,
     /// Bytes on disk are R, G, B, A. No swap.
+    /// Tibia 12+ documents RGBA8888 — earlier hand-coded BGRA was a
+    /// hold-over from the legacy `.spr` reverse-engineering.
+    #[default]
     Rgba = 1,
     /// Bytes on disk are A, R, G, B (Windows/GDI native). Reorder to RGBA.
     Argb = 2,
     /// Bytes on disk are A, B, G, R. Reorder to RGBA.
     Abgr = 3,
-}
-
-impl Default for PixelFormat {
-    fn default() -> Self {
-        // Tibia 12+ documents RGBA8888 — see docs/spr-legacy.md, last
-        // section. Earlier hand-coded BGRA was a hold-over from the
-        // legacy `.spr` reverse-engineering.
-        Self::Rgba
-    }
 }
 
 impl PixelFormat {
