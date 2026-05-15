@@ -98,6 +98,22 @@ pub fn blank_sheet(side: u32) -> RgbaImage {
     RgbaImage::new(side, side)
 }
 
+/// Decompress a standard LZMA1 "alone" stream (5-byte props + 8-byte
+/// size + data). Tolerates a bogus declared size by reading to the end
+/// of the stream — sheet files zero it out, OBD files set it honestly,
+/// and this handles both.
+pub fn lzma_decompress_alone(bytes: &[u8]) -> Result<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut reader = std::io::Cursor::new(bytes);
+    let options = lzma_rs::decompress::Options {
+        unpacked_size: lzma_rs::decompress::UnpackedSize::ReadHeaderButUseProvided(None),
+        ..Default::default()
+    };
+    lzma_rs::lzma_decompress_with_options(&mut reader, &mut out, &options)
+        .map_err(|e| SpriteError::Catalog(format!("lzma decompress: {e}")))?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

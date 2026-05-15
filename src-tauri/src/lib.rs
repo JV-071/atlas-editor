@@ -77,6 +77,8 @@ pub fn run() {
             assets::commands::save_sprite_sheets,
             assets::commands::has_unsaved_sheets,
             assets::commands::create_sprite_sheet,
+            assets::commands::preview_obd,
+            assets::commands::import_obd,
             // Converter
             converter::commands::converter_peek,
             converter::commands::converter_run,

@@ -5,5 +5,6 @@
 pub mod commands;
 pub mod edits;
 pub mod export;
+pub mod obd;
 
 pub use commands::{hydrate_recent_files, SharedWorkspace, WorkspaceState};

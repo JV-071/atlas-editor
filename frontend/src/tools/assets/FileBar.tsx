@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Home, MoreHorizontal, Redo2, Save, Search, Undo2, X } from "lucide-react";
+import { FileDown, Home, MoreHorizontal, Redo2, Save, Search, Undo2, X } from "lucide-react";
 
 import logoUrl from "../../shared/logo.png";
 import { useWorkspace } from "./store";
 import { cn } from "../../shared/utils";
 import { ExportQueueButton } from "./ExportQueueButton";
 import { SearchDialog } from "./SearchDialog";
+import { ImportDialog } from "./ImportDialog";
 import { useT } from "../../i18n";
 
 function basename(path: string | null): string | null {
@@ -80,6 +81,7 @@ export function FileBar() {
   const goToLauncher = useWorkspace((s) => s.goToLauncher);
   const t = useT();
   const [showSearch, setShowSearch] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const hasAnything = summary.appearancesPath != null;
 
@@ -168,6 +170,17 @@ export function FileBar() {
           </button>
         )}
 
+        {summary.appearancesPath && (
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            title={t("import.title")}
+            className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+          >
+            <FileDown className="h-4 w-4" />
+          </button>
+        )}
+
         <ExportQueueButton />
 
         {summary.appearancesPath && (
@@ -201,6 +214,7 @@ export function FileBar() {
         )}
       </div>
       {showSearch && <SearchDialog onClose={() => setShowSearch(false)} />}
+      {showImport && <ImportDialog onClose={() => setShowImport(false)} />}
     </header>
   );
 }

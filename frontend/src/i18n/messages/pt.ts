@@ -144,4 +144,9 @@ export const pt: Record<MessageKey, string> = {
   "sheets.replaceSprite": "Substituir do arquivo…",
   "sheets.newSheet": "Novo sheet",
   "sheets.hover": "sprite_id {spriteId} · col {col}, lin {row}",
+
+  "import.title": "Importar .obd",
+  "import.pick": "Escolher arquivo .obd",
+  "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
+  "import.commit": "Importar",
 };

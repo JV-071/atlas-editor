@@ -1008,8 +1008,18 @@ pub fn create_sprite_sheet(
 
     let entry = atlas.create_sheet(spritetype).map_err(|e| e.to_string())?;
 
-    // Append the sheet to catalog-content.json. The catalog is a flat
-    // JSON array of heterogeneous entries; we only add, never reorder.
+    append_sheet_to_catalog(&assets_dir, &entry)?;
+    reload_atlas(&state, &assets_dir)?;
+    Ok(entry.firstspriteid)
+}
+
+/// Append one `sprite` entry to `catalog-content.json` (flat JSON array
+/// of heterogeneous entries — we only add, never reorder) using an
+/// atomic tmp+rename so a crash can't leave a half-written catalog.
+fn append_sheet_to_catalog(
+    assets_dir: &std::path::Path,
+    entry: &atlas_sprites::SpriteSheetEntry,
+) -> Result<(), String> {
     let catalog_path = assets_dir.join("catalog-content.json");
     let bytes = std::fs::read(&catalog_path)
         .map_err(|e| format!("read {catalog_path:?}: {e}"))?;
@@ -1027,15 +1037,185 @@ pub fn create_sprite_sheet(
         .map_err(|e| format!("serialize catalog: {e}"))?;
     let tmp = catalog_path.with_extension("json.tmp");
     std::fs::write(&tmp, &serialized).map_err(|e| format!("write {tmp:?}: {e}"))?;
-    std::fs::rename(&tmp, &catalog_path)
-        .map_err(|e| format!("rename catalog: {e}"))?;
+    std::fs::rename(&tmp, &catalog_path).map_err(|e| format!("rename catalog: {e}"))?;
+    Ok(())
+}
 
-    // Reload so the in-memory catalog picks up the new entry. The
-    // sheet file is already on disk from `create_sheet`.
-    let reloaded = Atlas::from_assets_dir(&assets_dir).map_err(|e| e.to_string())?;
+/// Rebuild the in-memory atlas from disk so a freshly written sheet +
+/// catalog entry become resolvable. The sheet file must already be on
+/// disk before calling.
+fn reload_atlas(
+    state: &State<'_, SharedWorkspace>,
+    assets_dir: &std::path::Path,
+) -> Result<(), String> {
+    let reloaded = Atlas::from_assets_dir(assets_dir).map_err(|e| e.to_string())?;
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     guard.atlas = Some(std::sync::Arc::new(reloaded));
-    Ok(entry.firstspriteid)
+    Ok(())
+}
+
+/// Map an OBD tile composition (`tile_w` × `tile_h`, in 32px units) to
+/// the catalog `spritetype` whose tile size matches. Tibia only ships
+/// the four 32/64 combinations.
+fn spritetype_for_tiles(tile_w: u32, tile_h: u32) -> Result<u32, String> {
+    match (tile_w, tile_h) {
+        (1, 1) => Ok(0),
+        (1, 2) => Ok(1),
+        (2, 1) => Ok(2),
+        (2, 2) => Ok(3),
+        _ => Err(format!(
+            "OBD tile composition {tile_w}×{tile_h} has no matching sheet type \
+             (only 1×1, 1×2, 2×1, 2×2 are supported)"
+        )),
+    }
+}
+
+/// Parse a `.obd` without committing anything. Returns the category and
+/// per-frame-group metadata plus base64 PNG previews of every composed
+/// sprite so the import dialog can show what's inside.
+#[tauri::command]
+pub fn preview_obd(path: String) -> Result<serde_json::Value, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
+    let import = super::obd::parse_obd(&bytes)?;
+    let groups: Vec<serde_json::Value> = import
+        .frame_groups
+        .iter()
+        .map(|fg| {
+            let sprites: Vec<String> = fg
+                .sprites
+                .iter()
+                .map(|img| {
+                    atlas_sprites::encode_png_rgba(img)
+                        .map(|png| atlas_sprites::png_to_data_url(&png))
+                        .unwrap_or_default()
+                })
+                .collect();
+            serde_json::json!({
+                "fixedFrameGroup": fg.fixed_frame_group.map(|f| format!("{f:?}")),
+                "patternWidth": fg.pattern_width,
+                "patternHeight": fg.pattern_height,
+                "patternDepth": fg.pattern_depth,
+                "layers": fg.layers,
+                "frames": fg.frames,
+                "tileW": fg.tile_w,
+                "tileH": fg.tile_h,
+                "sprites": sprites,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "category": format!("{:?}", import.category).to_lowercase(),
+        "frameGroups": groups,
+    }))
+}
+
+/// Import a `.obd`: allocate a sheet for its sprites, write them, append
+/// a new appearance to the proto, and persist everything. Returns the
+/// new appearance id so the UI can select it.
+#[tauri::command]
+pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
+    let import = super::obd::parse_obd(&bytes)?;
+
+    // Every frame group of one appearance shares the same tile size.
+    let (tile_w, tile_h) = import
+        .frame_groups
+        .first()
+        .map(|f| (f.tile_w, f.tile_h))
+        .ok_or("OBD has no frame groups")?;
+    if import
+        .frame_groups
+        .iter()
+        .any(|f| f.tile_w != tile_w || f.tile_h != tile_h)
+    {
+        return Err("OBD frame groups disagree on tile size".into());
+    }
+    let spritetype = spritetype_for_tiles(tile_w, tile_h)?;
+    let total_sprites: usize = import.frame_groups.iter().map(|f| f.sprites.len()).sum();
+    if total_sprites == 0 {
+        return Err("OBD has no sprites".into());
+    }
+
+    let (atlas, assets_dir) = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        (
+            guard
+                .atlas
+                .clone()
+                .ok_or("assets dir is not set — open assets first")?,
+            guard
+                .assets_dir
+                .clone()
+                .ok_or("assets dir is not set — open assets first")?,
+        )
+    };
+
+    // Flush pending sheet edits — the reload below drops the cache.
+    atlas.save_dirty_sheets().map_err(|e| e.to_string())?;
+    let entry = atlas.create_sheet(spritetype).map_err(|e| e.to_string())?;
+    let capacity = (entry.lastspriteid - entry.firstspriteid + 1) as usize;
+    if total_sprites > capacity {
+        return Err(format!(
+            "OBD needs {total_sprites} sprites but a single {tile_w}×{tile_h} sheet \
+             only holds {capacity} (multi-sheet import not supported yet)"
+        ));
+    }
+    append_sheet_to_catalog(&assets_dir, &entry)?;
+    reload_atlas(&state, &assets_dir)?;
+
+    // Allocate ids sequentially and blit every composed sprite into the
+    // fresh sheet on the reloaded atlas.
+    let atlas = checkout_atlas(&state)?.ok_or("atlas vanished after reload")?;
+    let mut sprite_ids_per_group: Vec<Vec<u32>> = Vec::new();
+    let mut next_id = entry.firstspriteid;
+    for fg in &import.frame_groups {
+        let mut ids = Vec::with_capacity(fg.sprites.len());
+        for img in &fg.sprites {
+            atlas
+                .replace_sprite(next_id, img)
+                .map_err(|e| e.to_string())?;
+            ids.push(next_id);
+            next_id += 1;
+        }
+        sprite_ids_per_group.push(ids);
+    }
+    atlas.save_dirty_sheets().map_err(|e| e.to_string())?;
+
+    // Append the appearance to the proto and persist appearances.dat.
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    let snapshot = guard.workspace.clone();
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_mut()
+        .ok_or("appearances.dat is not loaded")?;
+    let list = match import.category {
+        AppearanceCategory::Object => &mut appearances.objects,
+        AppearanceCategory::Outfit => &mut appearances.outfits,
+        AppearanceCategory::Effect => &mut appearances.effects,
+        AppearanceCategory::Missile => &mut appearances.missiles,
+    };
+    let new_id = list
+        .iter()
+        .map(|a| a.id.0)
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1);
+    let appearance = super::obd::build_appearance(&import, new_id, &sprite_ids_per_group);
+    list.push(appearance);
+
+    push_history(&mut guard.history, snapshot);
+    guard.future.clear();
+    guard.dirty = true;
+
+    // Persist appearances.dat right away so the import survives a crash.
+    if let Some(path) = guard.appearances_path.clone() {
+        if let Some(app) = guard.workspace.appearances.as_ref() {
+            write_with_backup(&path, |dst| app.save_to_file(dst).map_err(|e| e.to_string()))?;
+            guard.dirty = false;
+        }
+    }
+    Ok(new_id)
 }
 
 /// Render the selected appearance to disk in the chosen format. For

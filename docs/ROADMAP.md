@@ -16,7 +16,7 @@ pass. Estimates are calendar-light: hours of focused work, not wall-clock.
 | 4 | Search dialog               | ~6h    | `feat/phase-4-search-dialog`        | Pending |
 | 5 | Sprite sheet editor (v1)    | ~8h    | `feat/phase-5-sheet-editor`         | Done |
 | 5b| Sprite sheet write-back     | ~12h   | `feat/phase-5b-sheet-writeback`     | Done |
-| 6 | Cross-client importer       | ~14h   | `feat/phase-6-importer`             | Pending |
+| 6 | Cross-client importer (OBD) | ~14h   | `feat/phase-6-importer`             | Done |
 | 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | Pending |
 | 8 | Lua scripting               | ~24h   | `feat/phase-8-lua`                  | Pending |
 
@@ -173,22 +173,48 @@ matching-size PNG → the sheet on disk re-decodes with the new pixels
 and the thumbnail updates; "New sheet 32×32" adds a blank sheet to
 `catalog-content.json` and its id range becomes browsable.
 
-## Phase 6 — Cross-client importer
+## Phase 6 — Cross-client importer (OBD)
 
-**Scope:** import appearances from another `.dat` or from an `.obd` (Tibia
-Object Builder Data) file.
+**Scope:** import a single appearance + its sprites from an `.obd`
+(Object Builder Data) file. External-`.dat` import is out of scope —
+that needs the 10.98 attribute parser, and OBD already covers the
+community workflow (forum-shared appearances ship as `.obd`).
+
+**Format finding:** after a standard LZMA1-alone decompress the layout
+is `u16 version` (200=V2 / 300=V3), `u16 clientVersion`, `u8 category`,
+`u32 texturePos`, the legacy 10.98 attribute blob, then the frame
+groups. `texturePos` is the absolute offset where the frame groups
+start, so we **seek past the attribute blob entirely** instead of
+porting the opcode soup — the legacy flags wouldn't map onto the modern
+proto cleanly anyway. Each embedded sprite is a 32×32 ARGB tile
+(alpha-first byte order); composed sprites stitch a `tile_w × tile_h`
+grid of those.
 
 **Changes**
-- `crates/atlas-appearances/src/obd.rs` (new) — OBD parser ported from the
-  reference's `OBD/ObdDecoder.cs`.
-- `src-tauri/src/assets/commands.rs` — `import_appearance(source_path, target_category)`,
-  `preview_obd(path)`.
-- `frontend/src/tools/assets/ImportDialog.tsx` (new) — wizard: pick source
-  (external `.dat` or `.obd`) → preview appearance → resolve sprite-id
-  conflicts via `SpriteGrid` in selection mode.
+- `crates/atlas-sprites` — `lzma_decompress_alone` helper, `Rgba`
+  re-export.
+- `src-tauri/src/assets/obd.rs` (new) — V2/V3 parser → neutral
+  `ObdImport`, plus `build_appearance` that maps OBD pattern dims
+  (x→pattern_width, y→pattern_height, z→pattern_depth, layers, frames→
+  animation phases) onto the proto model.
+- `src-tauri/src/assets/commands.rs` — `preview_obd` (parse + base64
+  sprite previews, no commit) and `import_obd` (allocate a sheet via
+  the Phase 5b path, blit every composed sprite, append the appearance
+  to the proto, persist appearances.dat with backup). Catalog append +
+  atlas reload factored into shared helpers.
+- `frontend/src/tools/assets/ImportDialog.tsx` (new) — pick → preview
+  (frame group breakdown + sprite thumbnails) → commit; opened from a
+  FileBar button. i18n in en/pt/es.
 
-**Acceptance:** importing an `.obd` downloaded from a forum thread shows the
-correct preview and applies cleanly with remapped sprite ids.
+**Limits (documented, not blocking):** single sheet per import (errors
+clearly if the appearance needs more than one sheet's worth of
+sprites); only the four 32/64 tile compositions; legacy-vs-proto sprite
+ordering is preserved as-is (the reference's own comments flag this as
+imperfect — the user eyeballs the result).
+
+**Acceptance:** importing an `.obd` shows the correct preview and, on
+commit, creates a sheet, writes the sprites, appends a new appearance
+in the right category and selects it; appearances.dat is saved.
 
 ## Phase 7 — Profiles
 

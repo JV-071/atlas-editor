@@ -33,8 +33,8 @@
 pub mod export;
 pub mod pack;
 pub use export::{decode_rgba, encode_animated_gif, encode_png_rgba, png_to_data_url};
-pub use image::RgbaImage;
-pub use pack::{encode_sheet_file, SHEET_PREFIX_LEN};
+pub use image::{Rgba, RgbaImage};
+pub use pack::{encode_sheet_file, lzma_decompress_alone, SHEET_PREFIX_LEN};
 
 use std::path::{Path, PathBuf};
 

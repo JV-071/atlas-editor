@@ -147,6 +147,11 @@ export const en = {
   "sheets.replaceSprite": "Replace from file…",
   "sheets.newSheet": "New sheet",
   "sheets.hover": "sprite_id {spriteId} · col {col}, row {row}",
+
+  "import.title": "Import .obd",
+  "import.pick": "Pick .obd file",
+  "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
+  "import.commit": "Import",
 } as const;
 
 export type MessageKey = keyof typeof en;
