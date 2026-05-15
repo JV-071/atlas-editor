@@ -5,6 +5,10 @@ import logoUrl from "./shared/logo.png";
 import { cn } from "./shared/utils";
 import { useApp, type Tool } from "./appStore";
 import { resizeWindow } from "./tools/assets/store";
+import { useT } from "./i18n";
+import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
+
+const APP_VERSION = "0.1.0";
 
 interface TileProps {
   icon: React.ReactNode;
@@ -16,6 +20,7 @@ interface TileProps {
 }
 
 function Tile({ icon, title, description, badge, onClick, disabled }: TileProps) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -52,7 +57,7 @@ function Tile({ icon, title, description, badge, onClick, disabled }: TileProps)
       </div>
       {!disabled && (
         <span className="mt-auto inline-flex items-center gap-1 text-[11px] text-atlas-muted group-hover:text-atlas-ink">
-          Open
+          {t("common.open")}
           <ArrowRight className="h-3 w-3" />
         </span>
       )}
@@ -62,6 +67,7 @@ function Tile({ icon, title, description, badge, onClick, disabled }: TileProps)
 
 export function HomeScreen() {
   const setTool = useApp((s) => s.setTool);
+  const t = useT();
 
   // Compact window on the home screen; tools resize on entry.
   useEffect(() => {
@@ -74,6 +80,10 @@ export function HomeScreen() {
 
   return (
     <main className="h-screen w-screen flex flex-col items-center bg-atlas-cream text-atlas-ink p-6 overflow-y-auto">
+      <div className="self-end mb-2">
+        <LanguageSwitcher />
+      </div>
+
       <header className="mb-6 flex flex-col items-center shrink-0">
         <div className="mb-3 rounded-2xl border border-atlas-border bg-atlas-paper p-3 shadow-sm ring-1 ring-atlas-ink/5">
           <img
@@ -84,38 +94,36 @@ export function HomeScreen() {
           />
         </div>
         <h1 className="text-2xl font-bold tracking-tight">Atlas Editor</h1>
-        <p className="text-xs text-atlas-muted mt-0.5">
-          Tibia 12+/15.x suite · pick a tool to begin
-        </p>
+        <p className="text-xs text-atlas-muted mt-0.5">{t("home.subtitle")}</p>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
         <Tile
           icon={<Map className="h-6 w-6" />}
-          title="Map Editor"
-          description="Edit .otbm world maps."
-          badge={{ label: "Em breve", tone: "muted" }}
+          title={t("home.tool.mapEditor.title")}
+          description={t("home.tool.mapEditor.description")}
+          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
           onClick={() => {}}
           disabled
         />
         <Tile
           icon={<ImagePlus className="h-6 w-6" />}
-          title="Assets Editor"
-          description="Open a client assets bundle and edit appearances, sprites, and item attributes."
-          badge={{ label: "Ready", tone: "active" }}
+          title={t("home.tool.assetsEditor.title")}
+          description={t("home.tool.assetsEditor.description")}
+          badge={{ label: t("home.badge.ready"), tone: "active" }}
           onClick={() => open("assets")}
         />
         <Tile
           icon={<FileCog className="h-6 w-6" />}
-          title="OTB Converter"
-          description="Turn a legacy items.otb (plus client .dat/.spr) into a modern Tibia 12+ assets bundle."
-          badge={{ label: "Beta", tone: "muted" }}
+          title={t("home.tool.otbConverter.title")}
+          description={t("home.tool.otbConverter.description")}
+          badge={{ label: t("home.badge.beta"), tone: "muted" }}
           onClick={() => open("converter")}
         />
       </div>
 
       <footer className="mt-auto pt-6 text-[10px] text-atlas-muted">
-        Atlas Editor · v0.1.0
+        {t("home.footer", { version: APP_VERSION })}
       </footer>
     </main>
   );

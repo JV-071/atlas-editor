@@ -56,7 +56,52 @@ export interface AppearanceRow {
   /// Per-phase duration in milliseconds, parallel to `displaySpriteIds`.
   /// Empty when the appearance is not animated.
   displayDurationsMs: number[];
+  /// Bitmask of boolean flags set on the appearance. Bit positions are
+  /// defined in `FLAG_BITS` and must stay in sync with the Rust
+  /// `FlagBit` enum in `src-tauri/src/assets/commands.rs`.
+  flagsMask: number;
 }
+
+/// Bit positions for filterable appearance flags. Keep in sync with the
+/// `FlagBit` enum on the Rust side — reordering or removing entries here
+/// silently breaks the filter UI.
+export const FLAG_BITS = {
+  container: 1 << 0,
+  cumulative: 1 << 1,
+  usable: 1 << 2,
+  forceuse: 1 << 3,
+  multiuse: 1 << 4,
+  unpass: 1 << 5,
+  unmove: 1 << 6,
+  unsight: 1 << 7,
+  avoid: 1 << 8,
+  take: 1 << 9,
+  liquidcontainer: 1 << 10,
+  liquidpool: 1 << 11,
+  hang: 1 << 12,
+  rotate: 1 << 13,
+  ignoreLook: 1 << 14,
+  ammo: 1 << 15,
+  dualWielding: 1 << 16,
+  showOffSocket: 1 << 17,
+  reportable: 1 << 18,
+  wrap: 1 << 19,
+  unwrap: 1 << 20,
+  corpse: 1 << 21,
+  playerCorpse: 1 << 22,
+  animateAlways: 1 << 23,
+  clip: 1 << 24,
+  bottom: 1 << 25,
+  top: 1 << 26,
+  noMovementAnimation: 1 << 27,
+  translucent: 1 << 28,
+  lyingObject: 1 << 29,
+  fullbank: 1 << 30,
+  topeffect: 1 << 31,
+} as const;
+
+export type FlagName = keyof typeof FLAG_BITS;
+export const FLAG_NAMES: FlagName[] = Object.keys(FLAG_BITS) as FlagName[];
 
 export interface RecentFiles {
   /// Most-recently-used assets directories. Stored as paths to the

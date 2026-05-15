@@ -83,9 +83,96 @@ pub struct AppearanceRow {
     /// `display_sprite_ids`. Empty when the appearance is not animated;
     /// callers should pick a sensible default in that case.
     pub display_durations_ms: Vec<u32>,
+    /// Bitmask of the boolean flags set on this appearance. Bit positions
+    /// are defined in [`FlagBit`] and must stay in sync with the frontend
+    /// `FLAG_BITS` table.
+    pub flags_mask: u32,
     pub otb_server_id: Option<u16>,
     pub is_appearance_orphan: bool,
     pub has_otb_collision: bool,
+}
+
+/// Bit positions for the appearance boolean flags. The frontend mirrors
+/// these as `FLAG_BITS` in `types.ts`; reordering or removing entries here
+/// would silently break the filter UI, so prefer appending new bits.
+#[repr(u32)]
+#[derive(Clone, Copy)]
+enum FlagBit {
+    Container = 1 << 0,
+    Cumulative = 1 << 1,
+    Usable = 1 << 2,
+    Forceuse = 1 << 3,
+    Multiuse = 1 << 4,
+    Unpass = 1 << 5,
+    Unmove = 1 << 6,
+    Unsight = 1 << 7,
+    Avoid = 1 << 8,
+    Take = 1 << 9,
+    Liquidcontainer = 1 << 10,
+    Liquidpool = 1 << 11,
+    Hang = 1 << 12,
+    Rotate = 1 << 13,
+    IgnoreLook = 1 << 14,
+    Ammo = 1 << 15,
+    DualWielding = 1 << 16,
+    ShowOffSocket = 1 << 17,
+    Reportable = 1 << 18,
+    Wrap = 1 << 19,
+    Unwrap = 1 << 20,
+    Corpse = 1 << 21,
+    PlayerCorpse = 1 << 22,
+    AnimateAlways = 1 << 23,
+    Clip = 1 << 24,
+    Bottom = 1 << 25,
+    Top = 1 << 26,
+    NoMovementAnimation = 1 << 27,
+    Translucent = 1 << 28,
+    LyingObject = 1 << 29,
+    Fullbank = 1 << 30,
+    Topeffect = 1 << 31,
+}
+
+fn appearance_flags_mask(app: &AppearanceInfo) -> u32 {
+    let f = &app.flags;
+    let mut mask = 0u32;
+    let set = |bit: FlagBit, on: bool, mask: &mut u32| {
+        if on {
+            *mask |= bit as u32;
+        }
+    };
+    set(FlagBit::Container, f.container, &mut mask);
+    set(FlagBit::Cumulative, f.cumulative, &mut mask);
+    set(FlagBit::Usable, f.usable, &mut mask);
+    set(FlagBit::Forceuse, f.forceuse, &mut mask);
+    set(FlagBit::Multiuse, f.multiuse, &mut mask);
+    set(FlagBit::Unpass, f.unpass, &mut mask);
+    set(FlagBit::Unmove, f.unmove, &mut mask);
+    set(FlagBit::Unsight, f.unsight, &mut mask);
+    set(FlagBit::Avoid, f.avoid, &mut mask);
+    set(FlagBit::Take, f.take, &mut mask);
+    set(FlagBit::Liquidcontainer, f.liquidcontainer, &mut mask);
+    set(FlagBit::Liquidpool, f.liquidpool, &mut mask);
+    set(FlagBit::Hang, f.hang, &mut mask);
+    set(FlagBit::Rotate, f.rotate, &mut mask);
+    set(FlagBit::IgnoreLook, f.ignore_look, &mut mask);
+    set(FlagBit::Ammo, f.ammo, &mut mask);
+    set(FlagBit::DualWielding, f.dual_wielding, &mut mask);
+    set(FlagBit::ShowOffSocket, f.show_off_socket, &mut mask);
+    set(FlagBit::Reportable, f.reportable, &mut mask);
+    set(FlagBit::Wrap, f.wrap, &mut mask);
+    set(FlagBit::Unwrap, f.unwrap, &mut mask);
+    set(FlagBit::Corpse, f.corpse, &mut mask);
+    set(FlagBit::PlayerCorpse, f.player_corpse, &mut mask);
+    set(FlagBit::AnimateAlways, f.animate_always, &mut mask);
+    set(FlagBit::Clip, f.clip, &mut mask);
+    set(FlagBit::Bottom, f.bottom, &mut mask);
+    set(FlagBit::Top, f.top, &mut mask);
+    set(FlagBit::NoMovementAnimation, f.no_movement_animation, &mut mask);
+    set(FlagBit::Translucent, f.translucent, &mut mask);
+    set(FlagBit::LyingObject, f.lying_object, &mut mask);
+    set(FlagBit::Fullbank, f.fullbank, &mut mask);
+    set(FlagBit::Topeffect, f.topeffect, &mut mask);
+    mask
 }
 
 /// Compute the sprite-id cycle the list thumbnail should display for a
@@ -678,6 +765,7 @@ pub fn list_appearances(
                 sprite_count: app.sprite_ids.len(),
                 display_sprite_ids,
                 display_durations_ms,
+                flags_mask: appearance_flags_mask(app),
                 otb_server_id,
                 is_appearance_orphan,
                 has_otb_collision,
