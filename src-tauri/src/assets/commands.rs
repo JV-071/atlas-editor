@@ -937,6 +937,107 @@ pub fn export_sprite_png_file(
     Ok(output_path)
 }
 
+/// Replace the pixels of `sprite_id` with the contents of an image
+/// file the user picked (PNG/BMP). The edit lands in the in-memory
+/// sheet and stays dirty until `save_sprite_sheets` flushes it.
+/// Bumps nothing on its own — the caller should bump `spriteCacheBust`
+/// frontend-side so thumbnails refetch.
+#[tauri::command]
+pub fn replace_sprite_from_png(
+    sprite_id: u32,
+    image_path: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<(), String> {
+    let atlas = checkout_atlas(&state)?
+        .ok_or("assets dir is not set — open assets first")?;
+    let bytes = std::fs::read(&image_path)
+        .map_err(|e| format!("read {image_path}: {e}"))?;
+    let img = atlas_sprites::decode_rgba(&bytes).map_err(|e| e.to_string())?;
+    atlas.replace_sprite(sprite_id, &img).map_err(|e| e.to_string())
+}
+
+/// Flush every dirty sheet back to disk (preserving each sheet's
+/// original Cipsoft prefix). Returns the file names written.
+#[tauri::command]
+pub fn save_sprite_sheets(
+    state: State<'_, SharedWorkspace>,
+) -> Result<Vec<String>, String> {
+    let atlas = checkout_atlas(&state)?
+        .ok_or("assets dir is not set — open assets first")?;
+    atlas.save_dirty_sheets().map_err(|e| e.to_string())
+}
+
+/// `true` when at least one sheet has unsaved pixel edits, so the UI
+/// can show an indicator next to the Save button.
+#[tauri::command]
+pub fn has_unsaved_sheets(state: State<'_, SharedWorkspace>) -> Result<bool, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    Ok(guard
+        .atlas
+        .as_ref()
+        .map(|a| a.has_unsaved_sheets())
+        .unwrap_or(false))
+}
+
+/// Create a new blank sheet for `spritetype`, append it to
+/// `catalog-content.json`, and reload the atlas so the new sprite-id
+/// range resolves. Returns the new sheet's `firstspriteid` so the UI
+/// can jump to it.
+#[tauri::command]
+pub fn create_sprite_sheet(
+    spritetype: u32,
+    state: State<'_, SharedWorkspace>,
+) -> Result<u32, String> {
+    let (atlas, assets_dir) = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        let atlas = guard
+            .atlas
+            .clone()
+            .ok_or("assets dir is not set — open assets first")?;
+        let dir = guard
+            .assets_dir
+            .clone()
+            .ok_or("assets dir is not set — open assets first")?;
+        (atlas, dir)
+    };
+
+    // Persist any pending sheet edits first — reloading the atlas
+    // below drops the in-memory cache, which would otherwise lose
+    // unsaved replace_sprite work.
+    atlas.save_dirty_sheets().map_err(|e| e.to_string())?;
+
+    let entry = atlas.create_sheet(spritetype).map_err(|e| e.to_string())?;
+
+    // Append the sheet to catalog-content.json. The catalog is a flat
+    // JSON array of heterogeneous entries; we only add, never reorder.
+    let catalog_path = assets_dir.join("catalog-content.json");
+    let bytes = std::fs::read(&catalog_path)
+        .map_err(|e| format!("read {catalog_path:?}: {e}"))?;
+    let mut entries: Vec<serde_json::Value> =
+        serde_json::from_slice(&bytes).map_err(|e| format!("parse catalog: {e}"))?;
+    entries.push(serde_json::json!({
+        "type": "sprite",
+        "file": entry.file,
+        "spritetype": entry.spritetype,
+        "firstspriteid": entry.firstspriteid,
+        "lastspriteid": entry.lastspriteid,
+        "area": entry.area,
+    }));
+    let serialized = serde_json::to_vec_pretty(&entries)
+        .map_err(|e| format!("serialize catalog: {e}"))?;
+    let tmp = catalog_path.with_extension("json.tmp");
+    std::fs::write(&tmp, &serialized).map_err(|e| format!("write {tmp:?}: {e}"))?;
+    std::fs::rename(&tmp, &catalog_path)
+        .map_err(|e| format!("rename catalog: {e}"))?;
+
+    // Reload so the in-memory catalog picks up the new entry. The
+    // sheet file is already on disk from `create_sheet`.
+    let reloaded = Atlas::from_assets_dir(&assets_dir).map_err(|e| e.to_string())?;
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    guard.atlas = Some(std::sync::Arc::new(reloaded));
+    Ok(entry.firstspriteid)
+}
+
 /// Render the selected appearance to disk in the chosen format. For
 /// `outfit_pngs` the path is treated as a directory and every cell of
 /// every frame group is written as its own PNG; the other formats

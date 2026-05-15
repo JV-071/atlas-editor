@@ -21,6 +21,14 @@ pub fn png_to_data_url(png_bytes: &[u8]) -> String {
     format!("data:image/png;base64,{encoded}")
 }
 
+/// Decode an arbitrary image byte buffer (PNG, BMP, …) into RGBA8.
+/// Used by the sprite-replace path to ingest user-picked files.
+pub fn decode_rgba(bytes: &[u8]) -> Result<RgbaImage> {
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| SpriteError::Catalog(format!("image decode: {e}")))?;
+    Ok(img.to_rgba8())
+}
+
 /// PNG-encode a single RGBA frame. Always preserves the alpha channel —
 /// "non-transparent" export means the source sprite happens to be fully
 /// opaque, not that we force-bake a background here.

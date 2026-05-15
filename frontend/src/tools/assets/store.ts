@@ -103,6 +103,16 @@ interface WorkspaceState {
   selectedSheetFile: string | null;
   setSelectedSheetFile: (file: string | null) => void;
 
+  /// Replace one sprite's pixels from a user-picked image file, then
+  /// bust the sprite caches so every thumbnail re-fetches. Returns
+  /// `true` if a file was picked and applied.
+  replaceSpriteFromFile: (spriteId: number) => Promise<boolean>;
+  /// Flush dirty sheets to disk. No-op when nothing is dirty.
+  saveSpriteSheets: () => Promise<void>;
+  /// Create a blank sheet for `spritetype`; resolves to its
+  /// firstspriteid so the caller can jump to it.
+  createSpriteSheet: (spritetype: number) => Promise<number | null>;
+
   setQuery: (query: string) => void;
   setSelected: (id: number | null) => Promise<void>;
   setCategory: (category: Category) => void;
@@ -409,6 +419,53 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().setSelected(info.appearanceId);
     } catch (e) {
       set({ error: String(e) });
+    }
+  },
+
+  async replaceSpriteFromFile(spriteId) {
+    const sel = await openDialog({
+      title: "Pick a replacement image",
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Image", extensions: ["png", "bmp"] }],
+    });
+    if (!sel) return false;
+    const imagePath = Array.isArray(sel) ? sel[0] : sel;
+    try {
+      await invoke("replace_sprite_from_png", { spriteId, imagePath });
+      // The pixels for `spriteId` (and its sheet) changed — drop both
+      // the module-level URL cache and the backend PNG cache key by
+      // bumping the bust counter so every visible thumbnail refetches.
+      clearSpriteUrlCache();
+      set({ spriteCacheBust: get().spriteCacheBust + 1, error: null });
+      return true;
+    } catch (e) {
+      set({ error: String(e) });
+      return false;
+    }
+  },
+
+  async saveSpriteSheets() {
+    try {
+      await invoke<string[]>("save_sprite_sheets");
+      set({ error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async createSpriteSheet(spritetype) {
+    try {
+      const firstSpriteId = await invoke<number>("create_sprite_sheet", {
+        spritetype,
+      });
+      clearSpriteUrlCache();
+      await get().refreshRows();
+      set({ spriteCacheBust: get().spriteCacheBust + 1, error: null });
+      return firstSpriteId;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
     }
   },
 

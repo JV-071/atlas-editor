@@ -73,6 +73,10 @@ pub fn run() {
             assets::commands::get_sheet_png_url,
             assets::commands::export_sheet_png_file,
             assets::commands::export_sprite_png_file,
+            assets::commands::replace_sprite_from_png,
+            assets::commands::save_sprite_sheets,
+            assets::commands::has_unsaved_sheets,
+            assets::commands::create_sprite_sheet,
             // Converter
             converter::commands::converter_peek,
             converter::commands::converter_run,

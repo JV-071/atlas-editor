@@ -144,6 +144,8 @@ export const en = {
   "sheets.exportSheet": "Export sheet PNG",
   "sheets.exportSprite": "Export sprite PNG",
   "sheets.viewInSheet": "View in sheet",
+  "sheets.replaceSprite": "Replace from file…",
+  "sheets.newSheet": "New sheet",
   "sheets.hover": "sprite_id {spriteId} · col {col}, row {row}",
 } as const;
 

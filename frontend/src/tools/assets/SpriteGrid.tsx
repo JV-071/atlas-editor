@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { invoke } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { Download, Layers, Search } from "lucide-react";
+import { Download, FileUp, Layers, Search } from "lucide-react";
 
 import { SpriteThumb } from "./SpriteThumb";
 import { useWorkspace } from "./store";
@@ -62,6 +62,8 @@ function SpriteTile({
   const t = useT();
   const setCategory = useWorkspace((s) => s.setCategory);
   const setSelectedSheetFile = useWorkspace((s) => s.setSelectedSheetFile);
+  const replaceSpriteFromFile = useWorkspace((s) => s.replaceSpriteFromFile);
+  const saveSpriteSheets = useWorkspace((s) => s.saveSpriteSheets);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -106,6 +108,14 @@ function SpriteTile({
     setCategory("sheets");
   }
 
+  async function replaceSprite() {
+    setMenu(null);
+    const applied = await replaceSpriteFromFile(id);
+    // Persist immediately so a crash can't lose the edit; the sheet
+    // write is atomic (tmp + rename) on the backend.
+    if (applied) await saveSpriteSheets();
+  }
+
   return (
     <div
       className="flex flex-col items-center gap-1 relative"
@@ -133,6 +143,17 @@ function SpriteTile({
           >
             <Download className="h-3.5 w-3.5" />
             {t("sheets.exportSprite")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void replaceSprite()}
+            className={cn(
+              "w-full text-left px-3 py-1.5 flex items-center gap-2 text-atlas-ink",
+              "hover:bg-atlas-sand",
+            )}
+          >
+            <FileUp className="h-3.5 w-3.5" />
+            {t("sheets.replaceSprite")}
           </button>
           <button
             type="button"

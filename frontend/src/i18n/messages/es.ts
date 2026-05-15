@@ -141,5 +141,7 @@ export const es: Record<MessageKey, string> = {
   "sheets.exportSheet": "Exportar sheet PNG",
   "sheets.exportSprite": "Exportar sprite PNG",
   "sheets.viewInSheet": "Ver en el sheet",
+  "sheets.replaceSprite": "Reemplazar desde archivo…",
+  "sheets.newSheet": "Nuevo sheet",
   "sheets.hover": "sprite_id {spriteId} · col {col}, fila {row}",
 };

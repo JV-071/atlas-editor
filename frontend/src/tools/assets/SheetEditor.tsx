@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { Download, ImageOff, Loader2, Search } from "lucide-react";
+import { Download, ImageOff, Loader2, Plus, Search } from "lucide-react";
 
 import { useWorkspace } from "./store";
 import type { SpriteRangeDto } from "./types";
@@ -23,8 +23,29 @@ export function SheetEditor() {
   const assetsDir = useWorkspace((s) => s.assetsDir);
   const selectedSheetFile = useWorkspace((s) => s.selectedSheetFile);
   const setSelectedSheetFile = useWorkspace((s) => s.setSelectedSheetFile);
+  const createSpriteSheet = useWorkspace((s) => s.createSpriteSheet);
   const t = useT();
   const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // The 4 sprite-type presets the client supports (32×32 … 64×64).
+  // Larger Tibia presets aren't catalog-addressable, so we stop here.
+  const SPRITE_TYPES: { type: number; label: string }[] = [
+    { type: 0, label: "32×32" },
+    { type: 1, label: "32×64" },
+    { type: 2, label: "64×32" },
+    { type: 3, label: "64×64" },
+  ];
+
+  async function newSheet(spritetype: number) {
+    setCreating(false);
+    const firstId = await createSpriteSheet(spritetype);
+    if (firstId == null) return;
+    // Jump to the freshly created sheet.
+    const ranges = useWorkspace.getState().spriteRanges;
+    const fresh = ranges.find((r) => r.firstspriteid === firstId);
+    if (fresh) setSelectedSheetFile(fresh.sheetFile);
+  }
 
   // Default-select the first sheet on entering the tab so the main
   // pane isn't blank.
@@ -84,6 +105,36 @@ export function SheetEditor() {
               <> / {spriteRanges.length.toLocaleString()}</>
             )}
           </span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setCreating((v) => !v)}
+              title={t("sheets.newSheet")}
+              className="rounded p-1 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            {creating && (
+              <div
+                className="absolute right-0 top-full mt-1 z-20 w-36 rounded border border-atlas-border bg-atlas-paper shadow-lg py-1"
+                onMouseLeave={() => setCreating(false)}
+              >
+                <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-atlas-muted font-semibold">
+                  {t("sheets.newSheet")}
+                </div>
+                {SPRITE_TYPES.map((st) => (
+                  <button
+                    key={st.type}
+                    type="button"
+                    onClick={() => void newSheet(st.type)}
+                    className="w-full text-left px-3 py-1 text-sm text-atlas-ink hover:bg-atlas-sand font-mono"
+                  >
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <ul className="flex-1 overflow-y-auto">
           {filtered.map((range) => {

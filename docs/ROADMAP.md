@@ -14,8 +14,8 @@ pass. Estimates are calendar-light: hours of focused work, not wall-clock.
 | 2 | Image export                | ~12h   | `feat/phase-2-image-export`         | Pending |
 | 3 | Batch export queue          | ~6h    | `feat/phase-3-export-queue`         | Pending |
 | 4 | Search dialog               | ~6h    | `feat/phase-4-search-dialog`        | Pending |
-| 5 | Sprite sheet editor (v1)    | ~8h    | `feat/phase-5-sheet-editor`         | In progress |
-| 5b| Sprite sheet write-back     | ~12h   | `feat/phase-5b-sheet-writeback`     | Deferred |
+| 5 | Sprite sheet editor (v1)    | ~8h    | `feat/phase-5-sheet-editor`         | Done |
+| 5b| Sprite sheet write-back     | ~12h   | `feat/phase-5b-sheet-writeback`     | Done |
 | 6 | Cross-client importer       | ~14h   | `feat/phase-6-importer`             | Pending |
 | 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | Pending |
 | 8 | Lua scripting               | ~24h   | `feat/phase-8-lua`                  | Pending |
@@ -137,22 +137,41 @@ magnifier, the toolbar "Export sheet PNG" button writes a PNG that
 opens cleanly outside the editor, and right-clicking any sprite in
 the Sprites tab can export it as PNG or jump to its sheet.
 
-## Phase 5b — Sprite sheet write-back (deferred)
+## Phase 5b — Sprite sheet write-back
 
-**Scope:** introduce sprite-sheet mutation — replace pixels for an
-existing `sprite_id`, create new sheets, repack across the 36 size
-presets, update `catalog-content.json`.
+**Scope:** sprite-sheet mutation — replace pixels for an existing
+`sprite_id`, create new blank sheets, persist back to disk.
+
+**Header finding:** a sheet file is `[32-byte prefix][LZMA1 stream]`.
+The prefix is 24 zero bytes + an 8-byte Cipsoft content checksum that
+neither our reader nor OT clients validate. The LZMA payload is a
+`BITMAPV4HEADER` 32-bpp BMP (R=0x00ff0000, G=0x0000ff00,
+B=0x000000ff, A=0xff000000, bottom-up). We preserve the original
+prefix verbatim on write-back rather than re-derive the checksum.
 
 **Changes**
-- `crates/atlas-sprites/src/pack.rs` (new) — packing helpers around
-  the size presets.
-- `crates/atlas-sprites/src/lib.rs` — sheet encoder (BMP → LZMA →
-  Cipsoft header). Needs the 32-byte header layout reverse-engineered
-  from a fresh Tibia 12+/15.x sheet first.
-- `src-tauri/src/assets/commands.rs` — `create_sheet`,
-  `replace_sheet_sprite`, plus a catalog-content writer.
-- Frontend — extra entries on the sprite context menu ("Replace from
-  file"), and a "New sheet" button on the Sheets tab.
+- `crates/atlas-sprites/src/pack.rs` (new) — `encode_sheet_bmp`
+  (exact V4 layout), `encode_sheet_file` (BMP → LZMA1 → prefix),
+  `blank_sheet`. Round-trip unit tests through the loader path.
+- `crates/atlas-sprites/src/lib.rs` — `Atlas::replace_sprite`,
+  per-sheet dirty tracking, `save_dirty_sheets` (atomic tmp+rename,
+  original prefix preserved), `create_sheet`, `decode_rgba`.
+- `src-tauri/src/assets/commands.rs` — `replace_sprite_from_png`,
+  `save_sprite_sheets`, `has_unsaved_sheets`, `create_sprite_sheet`
+  (appends to `catalog-content.json` then reloads the atlas).
+- Frontend — "Replace from file…" on the sprite context menu (auto-
+  saves), "New sheet" size-preset dropdown on the Sheets tab,
+  `replaceSpriteFromFile` / `saveSpriteSheets` / `createSpriteSheet`
+  store actions, i18n.
+
+**Caveat:** the preserved checksum goes stale after an edit. Verified
+to round-trip through our own decoder; OT-client (OTClient/Canary)
+acceptance still to be confirmed against a live client by the user.
+
+**Acceptance:** right-click a sprite → Replace from file → pick a
+matching-size PNG → the sheet on disk re-decodes with the new pixels
+and the thumbnail updates; "New sheet 32×32" adds a blank sheet to
+`catalog-content.json` and its id range becomes browsable.
 
 ## Phase 6 — Cross-client importer
 

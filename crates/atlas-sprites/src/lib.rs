@@ -31,8 +31,10 @@
 #![forbid(unsafe_code)]
 
 pub mod export;
-pub use export::{encode_animated_gif, encode_png_rgba, png_to_data_url};
+pub mod pack;
+pub use export::{decode_rgba, encode_animated_gif, encode_png_rgba, png_to_data_url};
 pub use image::RgbaImage;
+pub use pack::{encode_sheet_file, SHEET_PREFIX_LEN};
 
 use std::path::{Path, PathBuf};
 
@@ -340,6 +342,10 @@ pub struct Atlas {
     /// a single `Arc<Atlas>` and run truly concurrently instead of
     /// serializing through a workspace-level mutex.
     pixel_format: AtomicU8,
+    /// Sheets mutated since load, keyed by file name → original
+    /// 32-byte Cipsoft prefix (preserved verbatim on write-back).
+    /// Empty until the first `replace_sprite` / `create_sheet`.
+    dirty_sheets: DashMap<String, [u8; pack::SHEET_PREFIX_LEN]>,
 }
 
 impl Atlas {
@@ -350,6 +356,7 @@ impl Atlas {
             png_cache: DashMap::new(),
             bmp_wrap: false,
             pixel_format: AtomicU8::new(PixelFormat::default() as u8),
+            dirty_sheets: DashMap::new(),
         }
     }
 
@@ -495,6 +502,180 @@ impl Atlas {
         self.load_sheet(file)
     }
 
+    /// Read the original 32-byte Cipsoft prefix straight off disk. We
+    /// preserve it verbatim on write-back: it's a content checksum that
+    /// neither our reader nor OT clients validate, and re-deriving it
+    /// would mean reverse-engineering Cipsoft's hash for no gain.
+    fn read_sheet_prefix(&self, file: &str) -> Result<[u8; pack::SHEET_PREFIX_LEN]> {
+        let path = self.catalog.assets_dir.join(file);
+        let raw = std::fs::read(&path).map_err(|e| SpriteError::Io {
+            path: path.clone(),
+            source: e,
+        })?;
+        if raw.len() < pack::SHEET_PREFIX_LEN {
+            return Err(SpriteError::SheetTooSmall {
+                path,
+                actual: raw.len(),
+                expected: pack::SHEET_PREFIX_LEN,
+            });
+        }
+        let mut prefix = [0u8; pack::SHEET_PREFIX_LEN];
+        prefix.copy_from_slice(&raw[..pack::SHEET_PREFIX_LEN]);
+        Ok(prefix)
+    }
+
+    /// Overwrite the pixels of `sprite_id` with `replacement`. The
+    /// replacement must match the sprite's tile dimensions exactly.
+    /// The change lives in the in-memory sheet cache and is marked
+    /// dirty until [`Self::save_dirty_sheets`] flushes it to disk.
+    pub fn replace_sprite(&self, sprite_id: u32, replacement: &RgbaImage) -> Result<()> {
+        let sheet = self
+            .catalog
+            .sheet_for(sprite_id)
+            .ok_or(SpriteError::UnknownSprite(sprite_id))?;
+        let file = sheet.file.clone();
+        let spritetype = sheet.spritetype;
+        let firstspriteid = sheet.firstspriteid;
+
+        let dims = SpriteDims::from_spritetype(spritetype)?;
+        if replacement.width() != dims.width || replacement.height() != dims.height {
+            return Err(SpriteError::Catalog(format!(
+                "replacement is {}×{}, sprite {} expects {}×{}",
+                replacement.width(),
+                replacement.height(),
+                sprite_id,
+                dims.width,
+                dims.height,
+            )));
+        }
+
+        // Take a mutable copy of the decoded sheet, blit the tile, and
+        // re-publish it into the cache so subsequent reads see the edit.
+        let base = self.load_sheet(&file)?;
+        let mut img: RgbaImage = (*base).clone();
+        let sheet_side = img.width();
+        let cols = sheet_side / dims.width;
+        let index_in_sheet = sprite_id - firstspriteid;
+        let x = (index_in_sheet % cols) * dims.width;
+        let y = (index_in_sheet / cols) * dims.height;
+        for sy in 0..dims.height {
+            for sx in 0..dims.width {
+                img.put_pixel(x + sx, y + sy, *replacement.get_pixel(sx, sy));
+            }
+        }
+        self.sheet_cache
+            .insert(file.clone(), std::sync::Arc::new(img));
+        self.png_cache.remove(&sprite_id);
+
+        // Capture the original prefix the first time a sheet goes
+        // dirty so a later save can preserve it.
+        if !self.dirty_sheets.contains_key(&file) {
+            let prefix = self.read_sheet_prefix(&file)?;
+            self.dirty_sheets.insert(file, prefix);
+        }
+        Ok(())
+    }
+
+    /// `true` when at least one sheet has unsaved pixel edits.
+    pub fn has_unsaved_sheets(&self) -> bool {
+        !self.dirty_sheets.is_empty()
+    }
+
+    /// Re-encode every dirty sheet and write it back to disk, preserving
+    /// each sheet's original Cipsoft prefix. Returns the file names
+    /// written. Clears the dirty set on success.
+    pub fn save_dirty_sheets(&self) -> Result<Vec<String>> {
+        let mut written = Vec::new();
+        let files: Vec<String> = self
+            .dirty_sheets
+            .iter()
+            .map(|e| e.key().clone())
+            .collect();
+        for file in files {
+            let prefix = self
+                .dirty_sheets
+                .get(&file)
+                .map(|e| *e.value())
+                .unwrap_or([0u8; pack::SHEET_PREFIX_LEN]);
+            let img = self.load_sheet(&file)?;
+            let bytes = pack::encode_sheet_file(&img, &prefix)?;
+            let path = self.catalog.assets_dir.join(&file);
+            // Atomic-ish: write a sibling tmp then rename so a crash
+            // mid-write can't truncate the original sheet.
+            let tmp = path.with_extension("lzma.tmp");
+            std::fs::write(&tmp, &bytes).map_err(|e| SpriteError::Io {
+                path: tmp.clone(),
+                source: e,
+            })?;
+            std::fs::rename(&tmp, &path).map_err(|e| SpriteError::Io {
+                path: path.clone(),
+                source: e,
+            })?;
+            self.dirty_sheets.remove(&file);
+            written.push(file);
+        }
+        Ok(written)
+    }
+
+    /// Create a brand-new blank sheet covering the next free sprite-id
+    /// range for `spritetype`. Writes the file to the assets dir and
+    /// returns the catalog entry the caller must append to
+    /// `catalog-content.json`. The sheet is fully transparent; callers
+    /// fill it via [`Self::replace_sprite`] afterward.
+    pub fn create_sheet(&self, spritetype: u32) -> Result<SpriteSheetEntry> {
+        let dims = SpriteDims::from_spritetype(spritetype)?;
+        // Match whatever side the existing sheets use (384 or 512),
+        // defaulting to 384 for an empty catalog.
+        let side = self
+            .sheet_cache
+            .iter()
+            .next()
+            .map(|e| e.value().width())
+            .or_else(|| {
+                self.catalog
+                    .sheets
+                    .first()
+                    .and_then(|s| self.load_sheet(&s.file).ok())
+                    .map(|i| i.width())
+            })
+            .unwrap_or(SHEET_SIDES[0]);
+        let per_sheet = (side / dims.width) * (side / dims.height);
+        let firstspriteid = self
+            .catalog
+            .sheets
+            .iter()
+            .map(|s| s.lastspriteid)
+            .max()
+            .map(|m| m + 1)
+            .unwrap_or(0);
+        let lastspriteid = firstspriteid + per_sheet - 1;
+
+        let img = pack::blank_sheet(side);
+        let bytes = pack::encode_sheet_file(&img, &[0u8; pack::SHEET_PREFIX_LEN])?;
+        // Deterministic name in the same `sprites-*.bmp.lzma` shape the
+        // client uses. Real files name by content SHA-256; the client
+        // keys off catalog-content.json, not the name, so an id-based
+        // name is safe and easier to eyeball.
+        let file = format!("sprites-new-{firstspriteid}-{lastspriteid}.bmp.lzma");
+        let path = self.catalog.assets_dir.join(&file);
+        std::fs::write(&path, &bytes).map_err(|e| SpriteError::Io {
+            path: path.clone(),
+            source: e,
+        })?;
+        // Publish into the cache so the new (blank) sprites render
+        // immediately without a disk round-trip.
+        self.sheet_cache
+            .insert(file.clone(), std::sync::Arc::new(img));
+        Ok(SpriteSheetEntry {
+            file,
+            spritetype,
+            firstspriteid,
+            lastspriteid,
+            area: 0,
+        })
+    }
+
+
     fn load_sheet(&self, file: &str) -> Result<std::sync::Arc<RgbaImage>> {
         if let Some(hit) = self.sheet_cache.get(file) {
             return Ok(hit.clone());
@@ -619,5 +800,48 @@ mod tests {
             SpriteDims::from_spritetype(99),
             Err(SpriteError::UnsupportedSpriteType(99))
         ));
+    }
+
+    /// One-off probe: decompress a real sheet and dump its BMP header
+    /// so we can replicate the exact variant on the write path. Opt in
+    /// with `ATLAS_SHEET_PROBE=<assets_dir>` and run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn probe_real_sheet_bmp_header() {
+        let Ok(dir) = std::env::var("ATLAS_SHEET_PROBE") else {
+            eprintln!("set ATLAS_SHEET_PROBE to a Tibia assets dir");
+            return;
+        };
+        let atlas = Atlas::from_assets_dir(&dir).expect("assets dir");
+        let sheet = atlas.catalog().sheets.first().expect("a sheet").clone();
+        let raw = std::fs::read(std::path::Path::new(&dir).join(&sheet.file)).unwrap();
+        let mut decoded = Vec::new();
+        let mut reader = std::io::Cursor::new(&raw[SHEET_HEADER_LEN..]);
+        let options = lzma_rs::decompress::Options {
+            unpacked_size: lzma_rs::decompress::UnpackedSize::ReadHeaderButUseProvided(None),
+            ..Default::default()
+        };
+        lzma_rs::lzma_decompress_with_options(&mut reader, &mut decoded, &options).unwrap();
+        let u32le = |o: usize| {
+            u32::from_le_bytes([decoded[o], decoded[o + 1], decoded[o + 2], decoded[o + 3]])
+        };
+        let u16le = |o: usize| u16::from_le_bytes([decoded[o], decoded[o + 1]]);
+        eprintln!("decoded len           = {}", decoded.len());
+        eprintln!("magic                 = {:?}", &decoded[0..2]);
+        eprintln!("bfSize                = {}", u32le(2));
+        eprintln!("bfOffBits             = {}", u32le(10));
+        eprintln!("biSize (DIB)          = {}", u32le(14));
+        eprintln!("biWidth               = {}", u32le(18) as i32);
+        eprintln!("biHeight              = {}", u32le(22) as i32);
+        eprintln!("biBitCount            = {}", u16le(28));
+        eprintln!("biCompression         = {}", u32le(30));
+        eprintln!("biSizeImage           = {}", u32le(34));
+        if u32le(14) >= 108 {
+            eprintln!("redMask               = {:#010x}", u32le(54));
+            eprintln!("greenMask             = {:#010x}", u32le(58));
+            eprintln!("blueMask              = {:#010x}", u32le(62));
+            eprintln!("alphaMask             = {:#010x}", u32le(66));
+            eprintln!("csType                = {:#010x}", u32le(70));
+        }
     }
 }
