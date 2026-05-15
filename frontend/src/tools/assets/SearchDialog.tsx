@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   CheckSquare,
   Download,
@@ -110,12 +111,23 @@ export function SearchDialog({ onClose }: Props) {
         if (filters.forbidden !== 0 && (row.flagsMask & filters.forbidden) !== 0)
           continue;
         out.push({ row, category: cat });
-        if (out.length >= 5000) break;
       }
-      if (out.length >= 5000) break;
     }
     return out;
   }, [rowsByCategory, filters]);
+
+  // Virtualize the result list — without this, opening Ctrl+F with no
+  // filters tried to mount one `SpriteThumb` per appearance (30k+ on a
+  // real catalog), which froze the modal for several seconds and fired
+  // an avalanche of debounced IPC fetches.
+  const ROW_HEIGHT = 40;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: matches.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  });
 
   const pickedCount = picked.size;
   const allOnPageChecked =
@@ -373,70 +385,87 @@ export function SearchDialog({ onClose }: Props) {
               </div>
             </div>
 
-            <ul className="flex-1 overflow-y-auto divide-y divide-atlas-border/40">
-              {matches.length === 0 ? (
-                <li className="px-4 py-10 text-center text-sm text-atlas-muted italic">
-                  {t("search.results.empty")}
-                </li>
-              ) : (
-                matches.map((m) => {
-                  const key = rowKey(m);
-                  const checked = picked.has(key);
-                  return (
-                    <li
-                      key={key}
-                      className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-atlas-sand/60"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleRow(m)}
-                        className={cn(
-                          "shrink-0 rounded p-0.5",
-                          checked
-                            ? "text-emerald-700"
-                            : "text-atlas-muted hover:text-atlas-ink",
-                        )}
+            {matches.length === 0 ? (
+              <div className="flex-1 px-4 py-10 text-center text-sm text-atlas-muted italic">
+                {t("search.results.empty")}
+              </div>
+            ) : (
+              <div ref={scrollRef} className="flex-1 overflow-y-auto">
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    position: "relative",
+                    width: "100%",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((vrow) => {
+                    const m = matches[vrow.index];
+                    const key = rowKey(m);
+                    const checked = picked.has(key);
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${vrow.size}px`,
+                          transform: `translateY(${vrow.start}px)`,
+                        }}
+                        className="flex items-center gap-2 px-2 text-sm hover:bg-atlas-sand/60 border-b border-atlas-border/40"
                       >
-                        {checked ? (
-                          <CheckSquare className="h-3.5 w-3.5" />
+                        <button
+                          type="button"
+                          onClick={() => toggleRow(m)}
+                          className={cn(
+                            "shrink-0 rounded p-0.5",
+                            checked
+                              ? "text-emerald-700"
+                              : "text-atlas-muted hover:text-atlas-ink",
+                          )}
+                        >
+                          {checked ? (
+                            <CheckSquare className="h-3.5 w-3.5" />
+                          ) : (
+                            <Square className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        <span className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold w-12 shrink-0">
+                          {m.category}
+                        </span>
+                        <span className="font-mono text-xs tabular-nums text-atlas-muted w-14 shrink-0 text-right">
+                          {m.row.id}
+                        </span>
+                        {m.row.displaySpriteIds.length > 0 ? (
+                          <SpriteThumb
+                            ids={m.row.displaySpriteIds}
+                            durationsMs={m.row.displayDurationsMs}
+                            size={32}
+                          />
                         ) : (
-                          <Square className="h-3.5 w-3.5" />
+                          <div className="w-8 h-8 shrink-0" />
                         )}
-                      </button>
-                      <span className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold w-12 shrink-0">
-                        {m.category}
-                      </span>
-                      <span className="font-mono text-xs tabular-nums text-atlas-muted w-14 shrink-0 text-right">
-                        {m.row.id}
-                      </span>
-                      {m.row.displaySpriteIds.length > 0 ? (
-                        <SpriteThumb
-                          ids={m.row.displaySpriteIds}
-                          durationsMs={m.row.displayDurationsMs}
-                          size={32}
-                        />
-                      ) : (
-                        <div className="w-8 h-8 shrink-0" />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => jumpTo(m)}
-                        className="flex-1 min-w-0 text-left text-atlas-ink truncate hover:underline"
-                      >
-                        {m.row.name ?? (
-                          <span className="italic text-atlas-muted">
-                            (unnamed)
-                          </span>
-                        )}
-                      </button>
-                      <span className="text-[10px] text-atlas-muted shrink-0 tabular-nums">
-                        {m.row.spriteCount}
-                      </span>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
+                        <button
+                          type="button"
+                          onClick={() => jumpTo(m)}
+                          className="flex-1 min-w-0 text-left text-atlas-ink truncate hover:underline"
+                        >
+                          {m.row.name ?? (
+                            <span className="italic text-atlas-muted">
+                              (unnamed)
+                            </span>
+                          )}
+                        </button>
+                        <span className="text-[10px] text-atlas-muted shrink-0 tabular-nums">
+                          {m.row.spriteCount}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
