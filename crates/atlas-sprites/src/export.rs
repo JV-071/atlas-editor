@@ -8,9 +8,18 @@
 
 use std::io::Cursor;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use image::{ImageEncoder, RgbaImage};
 
 use crate::{Result, SpriteError};
+
+/// Wrap an already-encoded PNG byte buffer in a browser-ready
+/// `data:image/png;base64,...` URL. Pulled out so the sheet viewer
+/// can reuse it without each Tauri command pulling base64 in.
+pub fn png_to_data_url(png_bytes: &[u8]) -> String {
+    let encoded = BASE64.encode(png_bytes);
+    format!("data:image/png;base64,{encoded}")
+}
 
 /// PNG-encode a single RGBA frame. Always preserves the alpha channel —
 /// "non-transparent" export means the source sprite happens to be fully

@@ -70,6 +70,9 @@ pub fn run() {
             assets::commands::create_object_appearance,
             assets::commands::create_otb_item,
             assets::commands::export_appearance,
+            assets::commands::get_sheet_png_url,
+            assets::commands::export_sheet_png_file,
+            assets::commands::export_sprite_png_file,
             // Converter
             converter::commands::converter_peek,
             converter::commands::converter_run,

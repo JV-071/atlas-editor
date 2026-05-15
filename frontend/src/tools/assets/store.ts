@@ -97,6 +97,11 @@ interface WorkspaceState {
   /// Live progress for the currently running batch, or `null` when the
   /// queue is idle.
   exportProgress: ExportQueueProgress[] | null;
+  /// Sheet file the Sheets tab currently shows. Shared via the store
+  /// so other tabs (e.g. SpriteGrid) can deep-link into it via
+  /// `setSelectedSheetFile`.
+  selectedSheetFile: string | null;
+  setSelectedSheetFile: (file: string | null) => void;
 
   setQuery: (query: string) => void;
   setSelected: (id: number | null) => Promise<void>;
@@ -194,6 +199,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   spriteCacheBust: 0,
   exportQueue: new Map(),
   exportProgress: null,
+  selectedSheetFile: null,
+  setSelectedSheetFile: (file) => set({ selectedSheetFile: file }),
 
   setQuery: (query) => set({ query }),
   setCategory: (category) =>

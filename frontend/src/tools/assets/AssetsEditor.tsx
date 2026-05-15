@@ -9,15 +9,26 @@ import { useWorkspace } from "./store";
 
 function Editor() {
   const summary = useWorkspace((s) => s.summary);
+  const category = useWorkspace((s) => s.category);
+  // The Sheets tab embeds its own sidebar + main view, so giving it
+  // the AttributeEditor's slot too would crush both panes. Drop the
+  // attribute panel for that category only.
+  const fullWidthTab = category === "sheets";
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-atlas-cream text-atlas-ink">
       <FileBar />
       <Tabs />
       <main className="flex flex-1 min-h-0">
-        <aside className="w-[360px] shrink-0 min-h-0">
+        {fullWidthTab ? (
           <ItemList />
-        </aside>
-        <AttributeEditor />
+        ) : (
+          <>
+            <aside className="w-[360px] shrink-0 min-h-0">
+              <ItemList />
+            </aside>
+            <AttributeEditor />
+          </>
+        )}
       </main>
       <footer className="border-t border-atlas-border bg-atlas-paper px-4 py-1.5 text-xs text-atlas-muted flex items-center justify-between">
         <span>

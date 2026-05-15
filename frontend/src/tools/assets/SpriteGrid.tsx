@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Search } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { Download, Layers, Search } from "lucide-react";
 
 import { SpriteThumb } from "./SpriteThumb";
 import { useWorkspace } from "./store";
 import type { SpriteRangeDto } from "./types";
+import { cn } from "../../shared/utils";
+import { useT } from "../../i18n";
 
 const TILE_PIXELS = 64; // sprite image footprint
 const LABEL_GAP = 22; // id label height + gap underneath
@@ -45,11 +49,104 @@ function filteredIds(ranges: SpriteRangeDto[], query: string): number[] | null {
   return out;
 }
 
-function SpriteTile({ id }: { id: number }) {
+/// Single grid cell. Right-click opens a small context menu offering
+/// "export sprite as PNG" and "view in sheet" — both wired to the
+/// Phase 5 backend commands and the Sheets tab respectively.
+function SpriteTile({
+  id,
+  ranges,
+}: {
+  id: number;
+  ranges: SpriteRangeDto[];
+}) {
+  const t = useT();
+  const setCategory = useWorkspace((s) => s.setCategory);
+  const setSelectedSheetFile = useWorkspace((s) => s.setSelectedSheetFile);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    function close() {
+      setMenu(null);
+    }
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [menu]);
+
+  async function exportSprite() {
+    setMenu(null);
+    const sel = await saveDialog({
+      title: t("sheets.exportSprite"),
+      defaultPath: `sprite-${id}.png`,
+      filters: [{ name: "PNG", extensions: ["png"] }],
+    });
+    if (!sel) return;
+    try {
+      await invoke<string>("export_sprite_png_file", {
+        spriteId: id,
+        outputPath: sel,
+      });
+    } catch {
+      // Swallow — UI already surfaces errors via the global toast
+      // path; one bad export shouldn't blow up the grid.
+    }
+  }
+
+  function viewInSheet() {
+    setMenu(null);
+    const sheet = ranges.find(
+      (r) => id >= r.firstspriteid && id <= r.lastspriteid,
+    );
+    if (!sheet) return;
+    setSelectedSheetFile(sheet.sheetFile);
+    setCategory("sheets");
+  }
+
   return (
-    <div className="flex flex-col items-center gap-1" title={`sprite_id ${id}`}>
+    <div
+      className="flex flex-col items-center gap-1 relative"
+      title={`sprite_id ${id}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+    >
       <SpriteThumb ids={[id]} size={64} />
       <span className="text-[10px] text-atlas-muted font-mono tabular-nums">{id}</span>
+      {menu && (
+        <div
+          className="fixed z-30 w-44 rounded border border-atlas-border bg-atlas-paper shadow-lg text-sm py-1"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => void exportSprite()}
+            className={cn(
+              "w-full text-left px-3 py-1.5 flex items-center gap-2 text-atlas-ink",
+              "hover:bg-atlas-sand",
+            )}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {t("sheets.exportSprite")}
+          </button>
+          <button
+            type="button"
+            onClick={viewInSheet}
+            className={cn(
+              "w-full text-left px-3 py-1.5 flex items-center gap-2 text-atlas-ink",
+              "hover:bg-atlas-sand",
+            )}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            {t("sheets.viewInSheet")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -155,7 +252,7 @@ export function SpriteGrid() {
                     className="flex flex-wrap gap-3"
                   >
                     {ids.map((id) => (
-                      <SpriteTile key={id} id={id} />
+                      <SpriteTile key={id} id={id} ranges={spriteRanges} />
                     ))}
                   </div>
                 );

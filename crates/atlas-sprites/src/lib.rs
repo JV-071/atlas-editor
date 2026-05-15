@@ -31,7 +31,7 @@
 #![forbid(unsafe_code)]
 
 pub mod export;
-pub use export::{encode_animated_gif, encode_png_rgba};
+pub use export::{encode_animated_gif, encode_png_rgba, png_to_data_url};
 pub use image::RgbaImage;
 
 use std::path::{Path, PathBuf};
@@ -486,6 +486,13 @@ impl Atlas {
             }
         }
         Ok(out)
+    }
+
+    /// Load the entire decoded sheet by filename (relative to the
+    /// assets directory). Returns a cached `Arc` — repeated calls for
+    /// the same sheet are O(1).
+    pub fn sheet_image(&self, file: &str) -> Result<std::sync::Arc<RgbaImage>> {
+        self.load_sheet(file)
     }
 
     fn load_sheet(&self, file: &str) -> Result<std::sync::Arc<RgbaImage>> {

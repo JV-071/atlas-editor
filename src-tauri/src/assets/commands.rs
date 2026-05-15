@@ -886,6 +886,57 @@ pub fn inspect_catalog(state: State<'_, SharedWorkspace>) -> Result<serde_json::
     }))
 }
 
+/// Encode a single sprite sheet (by file name from `catalog-content.json`)
+/// as a base64-encoded PNG data URL for the in-app sheet viewer. Cached
+/// by file name so repeat opens are cheap.
+#[tauri::command]
+pub fn get_sheet_png_url(
+    sheet_file: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<String, String> {
+    let atlas = checkout_atlas(&state)?
+        .ok_or("assets dir is not set — open assets first")?;
+    let sheet = atlas.sheet_image(&sheet_file).map_err(|e| e.to_string())?;
+    let png = atlas_sprites::encode_png_rgba(&sheet).map_err(|e| e.to_string())?;
+    Ok(atlas_sprites::png_to_data_url(&png))
+}
+
+/// Write a full sprite sheet to disk as a PNG, decoded from its
+/// in-memory `RgbaImage` representation. Caller picks the destination
+/// path; we just write whatever they gave us.
+#[tauri::command]
+pub fn export_sheet_png_file(
+    sheet_file: String,
+    output_path: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<String, String> {
+    let atlas = checkout_atlas(&state)?
+        .ok_or("assets dir is not set — open assets first")?;
+    let sheet = atlas.sheet_image(&sheet_file).map_err(|e| e.to_string())?;
+    let png = atlas_sprites::encode_png_rgba(&sheet).map_err(|e| e.to_string())?;
+    let path = std::path::PathBuf::from(&output_path);
+    std::fs::write(&path, &png).map_err(|e| format!("write {path:?}: {e}"))?;
+    Ok(output_path)
+}
+
+/// Write a single sprite to disk as a PNG. The cropped tile lives
+/// inside the sheet it belongs to; `Atlas::sprite` already handles the
+/// addressing.
+#[tauri::command]
+pub fn export_sprite_png_file(
+    sprite_id: u32,
+    output_path: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<String, String> {
+    let atlas = checkout_atlas(&state)?
+        .ok_or("assets dir is not set — open assets first")?;
+    let img = atlas.sprite(sprite_id).map_err(|e| e.to_string())?;
+    let png = atlas_sprites::encode_png_rgba(&img).map_err(|e| e.to_string())?;
+    let path = std::path::PathBuf::from(&output_path);
+    std::fs::write(&path, &png).map_err(|e| format!("write {path:?}: {e}"))?;
+    Ok(output_path)
+}
+
 /// Render the selected appearance to disk in the chosen format. For
 /// `outfit_pngs` the path is treated as a directory and every cell of
 /// every frame group is written as its own PNG; the other formats

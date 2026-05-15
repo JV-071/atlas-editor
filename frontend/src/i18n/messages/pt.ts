@@ -130,4 +130,16 @@ export const pt: Record<MessageKey, string> = {
   "search.bulk.off": "desligar",
   "search.bulk.apply": "Aplicar em {count}",
   "search.queue.add": "Enfileirar {count} pra export",
+
+  "sheets.noAssets":
+    "Abra uma pasta de assets para inspecionar os sprite sheets.",
+  "sheets.empty": "Esse bundle não tem sprite sheets.",
+  "sheets.pickHint": "Escolha um sheet na lista para visualizá-lo.",
+  "sheets.searchPlaceholder": "Filtrar sheets…",
+  "sheets.grid": "Grid",
+  "sheets.magnifier": "Lupa",
+  "sheets.exportSheet": "Exportar sheet em PNG",
+  "sheets.exportSprite": "Exportar sprite em PNG",
+  "sheets.viewInSheet": "Ver no sheet",
+  "sheets.hover": "sprite_id {spriteId} · col {col}, lin {row}",
 };

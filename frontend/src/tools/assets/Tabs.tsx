@@ -1,4 +1,12 @@
-import { Grid3X3, Package, Sparkles, Target, User, type LucideIcon } from "lucide-react";
+import {
+  Grid3X3,
+  Layers,
+  Package,
+  Sparkles,
+  Target,
+  User,
+  type LucideIcon,
+} from "lucide-react";
 
 import { useWorkspace } from "./store";
 import type { Category } from "./types";
@@ -55,9 +63,22 @@ const TABS: TabDef[] = [
     activeBorderClass: "border-emerald-700",
     activeBgClass: "bg-emerald-700/10",
   },
+  {
+    id: "sheets",
+    label: "Sheets",
+    icon: Layers,
+    iconClass: "text-teal-700",
+    activeBorderClass: "border-teal-700",
+    activeBgClass: "bg-teal-700/10",
+  },
 ];
 
-function tabCount(id: Category, summary: ReturnType<typeof useWorkspace.getState>["summary"], spriteCount: number): number {
+function tabCount(
+  id: Category,
+  summary: ReturnType<typeof useWorkspace.getState>["summary"],
+  spriteCount: number,
+  sheetCount: number,
+): number {
   switch (id) {
     case "object":
       return summary.objectCount;
@@ -69,6 +90,8 @@ function tabCount(id: Category, summary: ReturnType<typeof useWorkspace.getState
       return summary.missileCount;
     case "sprites":
       return spriteCount;
+    case "sheets":
+      return sheetCount;
   }
 }
 
@@ -79,12 +102,13 @@ export function Tabs() {
   const spriteCount = useWorkspace((s) =>
     s.spriteRanges.reduce((acc, r) => acc + (r.lastspriteid - r.firstspriteid + 1), 0),
   );
+  const sheetCount = useWorkspace((s) => s.spriteRanges.length);
 
   return (
     <div className="flex border-b border-atlas-border bg-atlas-paper">
       {TABS.map((tab) => {
         const isActive = tab.id === active;
-        const count = tabCount(tab.id, summary, spriteCount);
+        const count = tabCount(tab.id, summary, spriteCount, sheetCount);
         const Icon = tab.icon;
         return (
           <button
@@ -126,4 +150,5 @@ export const CATEGORY_META: Record<
   effect: { icon: Sparkles, iconClass: "text-fuchsia-700", textClass: "text-fuchsia-700" },
   missile: { icon: Target, iconClass: "text-rose-700", textClass: "text-rose-700" },
   sprites: { icon: Grid3X3, iconClass: "text-emerald-700", textClass: "text-emerald-700" },
+  sheets: { icon: Layers, iconClass: "text-teal-700", textClass: "text-teal-700" },
 };

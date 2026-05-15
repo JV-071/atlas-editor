@@ -133,6 +133,18 @@ export const en = {
   "search.bulk.off": "set off",
   "search.bulk.apply": "Apply to {count}",
   "search.queue.add": "Queue {count} for export",
+
+  "sheets.noAssets":
+    "Open an assets folder to inspect its sprite sheets.",
+  "sheets.empty": "This bundle has no sprite sheets.",
+  "sheets.pickHint": "Pick a sheet from the list to preview it.",
+  "sheets.searchPlaceholder": "Filter sheets…",
+  "sheets.grid": "Grid",
+  "sheets.magnifier": "Magnifier",
+  "sheets.exportSheet": "Export sheet PNG",
+  "sheets.exportSprite": "Export sprite PNG",
+  "sheets.viewInSheet": "View in sheet",
+  "sheets.hover": "sprite_id {spriteId} · col {col}, row {row}",
 } as const;
 
 export type MessageKey = keyof typeof en;

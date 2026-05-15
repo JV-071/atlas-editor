@@ -11,7 +11,7 @@
 /// catalog-level "sprites" browser. The first four come from the
 /// appearance proto; "sprites" reads directly from the sprite sheet
 /// ranges in `catalog-content.json`.
-export type Category = "object" | "outfit" | "effect" | "missile" | "sprites";
+export type Category = "object" | "outfit" | "effect" | "missile" | "sprites" | "sheets";
 
 export type AppearanceCategory = "object" | "outfit" | "effect" | "missile";
 
@@ -22,7 +22,7 @@ export const APPEARANCE_CATEGORIES: AppearanceCategory[] = [
   "missile",
 ];
 
-export const CATEGORIES: Category[] = [...APPEARANCE_CATEGORIES, "sprites"];
+export const CATEGORIES: Category[] = [...APPEARANCE_CATEGORIES, "sprites", "sheets"];
 
 export interface SpriteRangeDto {
   firstspriteid: number;

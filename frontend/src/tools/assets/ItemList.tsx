@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CheckSquare, Filter, Plus, Search, Square, X } from "lucide-react";
 
+import { SheetEditor } from "./SheetEditor";
 import { SpriteGrid } from "./SpriteGrid";
 import { SpriteThumb } from "./SpriteThumb";
 import { queueKey, useWorkspace } from "./store";
@@ -144,10 +145,13 @@ const EMPTY_APPEARANCE_ROWS: AppearanceRow[] = [];
 
 export function ItemList() {
   const category = useWorkspace((s) => s.category);
-  // Sprites tab has a completely different layout — bail before we
-  // touch any appearance-row state.
+  // Sprites and Sheets tabs have completely different layouts — bail
+  // before we touch any appearance-row state.
   if (category === "sprites") {
     return <SpriteGrid />;
+  }
+  if (category === "sheets") {
+    return <SheetEditor />;
   }
   return <AppearanceList category={category} />;
 }

@@ -14,7 +14,8 @@ pass. Estimates are calendar-light: hours of focused work, not wall-clock.
 | 2 | Image export                | ~12h   | `feat/phase-2-image-export`         | Pending |
 | 3 | Batch export queue          | ~6h    | `feat/phase-3-export-queue`         | Pending |
 | 4 | Search dialog               | ~6h    | `feat/phase-4-search-dialog`        | Pending |
-| 5 | Sprite sheet editor         | ~20h   | `feat/phase-5-sheet-editor`         | Pending |
+| 5 | Sprite sheet editor (v1)    | ~8h    | `feat/phase-5-sheet-editor`         | In progress |
+| 5b| Sprite sheet write-back     | ~12h   | `feat/phase-5b-sheet-writeback`     | Deferred |
 | 6 | Cross-client importer       | ~14h   | `feat/phase-6-importer`             | Pending |
 | 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | Pending |
 | 8 | Lua scripting               | ~24h   | `feat/phase-8-lua`                  | Pending |
@@ -104,25 +105,54 @@ evolved from the current flag-filter popover.
 **Acceptance:** `Ctrl+F` opens, querying by flag returns ~50 rows, "Add to
 export" pushes them into the Phase 3 queue.
 
-## Phase 5 — Sprite sheet editor
+## Phase 5 — Sprite sheet editor (v1, read-only)
 
-**Scope:** create, import, and export sprite sheets — not just browse them.
+**Scope:** browse and export the existing sprite sheets. The write
+path (replace sprite, create new sheet) is deferred to Phase 5b
+because it needs the Cipsoft sheet-header format reverse-engineered
+first — we never had to encode one, only decode.
 
 **Changes**
-- `crates/atlas-sprites/src/pack.rs` (new) — packing/repacking sprites between
-  sheets honoring the 36 size presets (32×32 … 384×384) from the reference.
-- `src-tauri/src/assets/commands.rs` — `create_sheet`, `replace_sheet_sprite`,
-  `export_sheet_png`.
-- `frontend/src/tools/assets/SpriteGrid.tsx` — per-sprite context menu
-  (Export, Replace, View sheet).
-- `frontend/src/tools/assets/SheetEditor.tsx` (new) — standalone view rendering
-  the full sheet PNG with a grid overlay, size-preset picker, and hover
-  magnifier (radius 80 px, 0.3× zoom).
-- New "Sheets" tab next to "Sprites" in `Tabs.tsx`.
+- `crates/atlas-sprites/src/lib.rs` — `Atlas::sheet_image` made public
+  so callers can pull the full decoded `RgbaImage` for a sheet.
+- `crates/atlas-sprites/src/export.rs` — `png_to_data_url` helper so
+  the Tauri commands don't each pull `base64` in.
+- `src-tauri/src/assets/commands.rs` — `get_sheet_png_url`,
+  `export_sheet_png_file`, `export_sprite_png_file` commands.
+- `frontend/src/tools/assets/Tabs.tsx` — new "Sheets" category.
+- `frontend/src/tools/assets/AssetsEditor.tsx` — drops the right
+  attribute panel when the Sheets tab is active so the sheet view
+  gets the whole width.
+- `frontend/src/tools/assets/SheetEditor.tsx` (new) — sidebar listing
+  every sheet plus a main pane that renders the decoded PNG with a
+  grid overlay, hover magnifier (radius 80 px, 3× zoom) and an
+  "Export sheet PNG" button.
+- `frontend/src/tools/assets/SpriteGrid.tsx` — right-click menu on
+  every sprite tile with "Export sprite PNG" and "View in sheet"
+  (deep-links into the Sheets tab via `selectedSheetFile`).
 
-**Acceptance:** importing a 384×384 PNG creates a new sheet, assigns sprite
-ids, updates `catalog-content.json`, and the new sprites surface both in the
-Sprites tab and on any row that references them.
+**Acceptance:** opening the Sheets tab lists every sheet from the
+catalog, picking one renders it with a grid overlay and working
+magnifier, the toolbar "Export sheet PNG" button writes a PNG that
+opens cleanly outside the editor, and right-clicking any sprite in
+the Sprites tab can export it as PNG or jump to its sheet.
+
+## Phase 5b — Sprite sheet write-back (deferred)
+
+**Scope:** introduce sprite-sheet mutation — replace pixels for an
+existing `sprite_id`, create new sheets, repack across the 36 size
+presets, update `catalog-content.json`.
+
+**Changes**
+- `crates/atlas-sprites/src/pack.rs` (new) — packing helpers around
+  the size presets.
+- `crates/atlas-sprites/src/lib.rs` — sheet encoder (BMP → LZMA →
+  Cipsoft header). Needs the 32-byte header layout reverse-engineered
+  from a fresh Tibia 12+/15.x sheet first.
+- `src-tauri/src/assets/commands.rs` — `create_sheet`,
+  `replace_sheet_sprite`, plus a catalog-content writer.
+- Frontend — extra entries on the sprite context menu ("Replace from
+  file"), and a "New sheet" button on the Sheets tab.
 
 ## Phase 6 — Cross-client importer
 
