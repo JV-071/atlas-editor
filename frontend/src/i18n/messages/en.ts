@@ -113,6 +113,26 @@ export const en = {
   "queue.status.running": "Running…",
   "queue.status.done": "Done",
   "queue.status.error": "Failed",
+
+  "search.title": "Search appearances",
+  "search.filter.category": "Category",
+  "search.filter.allCategories": "All categories",
+  "search.filter.name": "Name / id contains",
+  "search.filter.namePlaceholder": "e.g. potion, 3015",
+  "search.filter.idRange": "ID range",
+  "search.filter.flags": "Flags",
+  "search.filter.flagsHint":
+    "Click a flag to require it (green ✓). Click again to forbid it (red ✗). Click once more to ignore it.",
+  "search.results.count": "{count} match(es)",
+  "search.results.selected": "{count} selected",
+  "search.results.selectAll": "Select all",
+  "search.results.deselectAll": "Deselect all",
+  "search.results.empty": "No appearance matches the current filters.",
+  "search.bulk": "Bulk:",
+  "search.bulk.on": "set on",
+  "search.bulk.off": "set off",
+  "search.bulk.apply": "Apply to {count}",
+  "search.queue.add": "Queue {count} for export",
 } as const;
 
 export type MessageKey = keyof typeof en;

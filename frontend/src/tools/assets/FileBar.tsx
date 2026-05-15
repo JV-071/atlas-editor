@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Home, MoreHorizontal, Redo2, Save, Undo2, X } from "lucide-react";
+import { Home, MoreHorizontal, Redo2, Save, Search, Undo2, X } from "lucide-react";
 
 import logoUrl from "../../shared/logo.png";
 import { useWorkspace } from "./store";
 import { cn } from "../../shared/utils";
 import { ExportQueueButton } from "./ExportQueueButton";
+import { SearchDialog } from "./SearchDialog";
+import { useT } from "../../i18n";
 
 function basename(path: string | null): string | null {
   if (!path) return null;
@@ -76,10 +78,13 @@ export function FileBar() {
   const redo = useWorkspace((s) => s.redo);
   const saveAppearances = useWorkspace((s) => s.saveAppearances);
   const goToLauncher = useWorkspace((s) => s.goToLauncher);
+  const t = useT();
+  const [showSearch, setShowSearch] = useState(false);
 
   const hasAnything = summary.appearancesPath != null;
 
-  // Keyboard shortcuts: Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo, Ctrl+S save
+  // Keyboard shortcuts: Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo,
+  // Ctrl+S save, Ctrl+F open search.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -93,6 +98,9 @@ export function FileBar() {
       } else if (key === "s") {
         e.preventDefault();
         if (summary.appearancesPath) void saveAppearances();
+      } else if (key === "f" && summary.appearancesPath) {
+        e.preventDefault();
+        setShowSearch(true);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -149,6 +157,17 @@ export function FileBar() {
           <Redo2 className="h-4 w-4" />
         </button>
 
+        {summary.appearancesPath && (
+          <button
+            type="button"
+            onClick={() => setShowSearch(true)}
+            title={`${t("search.title")} (Ctrl+F)`}
+            className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        )}
+
         <ExportQueueButton />
 
         {summary.appearancesPath && (
@@ -181,6 +200,7 @@ export function FileBar() {
           </button>
         )}
       </div>
+      {showSearch && <SearchDialog onClose={() => setShowSearch(false)} />}
     </header>
   );
 }
