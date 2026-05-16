@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use atlas_appearances::{AppearanceInfo, Appearances, FixedFrameGroup};
 use atlas_core::AppearanceCategory;
 use atlas_otb::Otb;
-use atlas_sprites::{Atlas, PixelFormat, SheetInspection, SpriteDims};
+use atlas_sprites::{safe_join, Atlas, PixelFormat, SheetInspection, SpriteDims};
 use atlas_workspace::{CrossRef, Workspace};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1629,7 +1629,10 @@ pub fn open_assets_bundle(
     let appearances_file = atlas.catalog().appearances_file.clone();
     let assets_path = PathBuf::from(&path);
 
-    let appearances_path = appearances_file.as_ref().map(|name| assets_path.join(name));
+    let appearances_path = appearances_file
+        .as_ref()
+        .map(|name| safe_join(&assets_path, name).map_err(|e| e.to_string()))
+        .transpose()?;
     let appearances = match appearances_path.as_ref() {
         Some(p) => Some(Appearances::load_from_file(p).map_err(|e| e.to_string())?),
         None => None,

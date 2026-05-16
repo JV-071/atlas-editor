@@ -154,9 +154,33 @@ pub enum SpriteError {
 
     #[error("unsupported spritetype id {0}")]
     UnsupportedSpriteType(u32),
+
+    #[error("path traversal detected: {0:?} escapes the assets directory")]
+    PathTraversal(PathBuf),
 }
 
 pub type Result<T> = std::result::Result<T, SpriteError>;
+
+/// Resolve a catalog-relative filename against `base`, rejecting any path
+/// that escapes the base directory (absolute paths, `..` components, etc.).
+pub fn safe_join(base: &Path, relative: &str) -> Result<PathBuf> {
+    let rel = Path::new(relative);
+    if rel.is_absolute() {
+        return Err(SpriteError::PathTraversal(rel.to_path_buf()));
+    }
+    for component in rel.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                return Err(SpriteError::PathTraversal(rel.to_path_buf()));
+            }
+            std::path::Component::Prefix(_) => {
+                return Err(SpriteError::PathTraversal(rel.to_path_buf()));
+            }
+            _ => {}
+        }
+    }
+    Ok(base.join(rel))
+}
 
 /// One entry in `catalog-content.json`. Only the fields we care about
 /// are typed; everything else is captured into `extra` so the catalog
@@ -437,7 +461,7 @@ impl Atlas {
         let sheet = self
             .resolve_sheet(sprite_id)
             .ok_or(SpriteError::UnknownSprite(sprite_id))?;
-        let path = self.catalog.assets_dir.join(&sheet.file);
+        let path = safe_join(&self.catalog.assets_dir, &sheet.file)?;
         let raw = std::fs::read(&path).map_err(|e| SpriteError::Io {
             path: path.clone(),
             source: e,
@@ -537,7 +561,7 @@ impl Atlas {
     /// neither our reader nor OT clients validate, and re-deriving it
     /// would mean reverse-engineering Cipsoft's hash for no gain.
     fn read_sheet_prefix(&self, file: &str) -> Result<[u8; pack::SHEET_PREFIX_LEN]> {
-        let path = self.catalog.assets_dir.join(file);
+        let path = safe_join(&self.catalog.assets_dir, file)?;
         let raw = std::fs::read(&path).map_err(|e| SpriteError::Io {
             path: path.clone(),
             source: e,
@@ -628,7 +652,7 @@ impl Atlas {
                 .unwrap_or([0u8; pack::SHEET_PREFIX_LEN]);
             let img = self.load_sheet(&file)?;
             let bytes = pack::encode_sheet_file(&img, &prefix)?;
-            let path = self.catalog.assets_dir.join(&file);
+            let path = safe_join(&self.catalog.assets_dir, &file)?;
             // Atomic-ish: write a sibling tmp then rename so a crash
             // mid-write can't truncate the original sheet.
             let tmp = path.with_extension("lzma.tmp");
@@ -695,7 +719,7 @@ impl Atlas {
         // keys off catalog-content.json, not the name, so an id-based
         // name is safe and easier to eyeball.
         let file = format!("sprites-new-{firstspriteid}-{lastspriteid}.bmp.lzma");
-        let path = self.catalog.assets_dir.join(&file);
+        let path = safe_join(&self.catalog.assets_dir, &file)?;
         std::fs::write(&path, &bytes).map_err(|e| SpriteError::Io {
             path: path.clone(),
             source: e,
@@ -724,7 +748,7 @@ impl Atlas {
         if let Some(hit) = self.sheet_cache.get(file) {
             return Ok(hit.clone());
         }
-        let path = self.catalog.assets_dir.join(file);
+        let path = safe_join(&self.catalog.assets_dir, file)?;
         let raw = std::fs::read(&path).map_err(|e| SpriteError::Io {
             path: path.clone(),
             source: e,
