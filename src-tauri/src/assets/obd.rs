@@ -214,7 +214,15 @@ fn read_frame_group(
         None
     };
 
-    let num_tiles = (tile_w * tile_h * layers * px * py * pz * frames) as usize;
+    let num_tiles: usize = (tile_w as u64)
+        .checked_mul(tile_h as u64)
+        .and_then(|v| v.checked_mul(layers as u64))
+        .and_then(|v| v.checked_mul(px as u64))
+        .and_then(|v| v.checked_mul(py as u64))
+        .and_then(|v| v.checked_mul(pz as u64))
+        .and_then(|v| v.checked_mul(frames as u64))
+        .and_then(|v| usize::try_from(v).ok())
+        .ok_or("OBD: tile count overflow")?;
     let mut tiles: Vec<RgbaImage> = Vec::with_capacity(num_tiles);
     for _ in 0..num_tiles {
         let _sprite_id = r.u32()?; // source id — discarded, we reallocate
