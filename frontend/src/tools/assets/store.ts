@@ -136,6 +136,8 @@ interface WorkspaceState {
   renameProfile: (oldName: string, newName: string) => Promise<void>;
   deleteProfile: (name: string) => Promise<void>;
   refreshRows: () => Promise<void>;
+  refreshCategoryRows: (category: Category) => Promise<void>;
+  refreshSpriteRanges: () => Promise<void>;
   refreshRecent: () => Promise<void>;
   refreshSelectedDetails: () => Promise<void>;
   refreshAssetsDirInfo: () => Promise<void>;
@@ -300,6 +302,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ rowsByCategory, spriteRanges });
   },
 
+  /// Re-list a single category. Field edits and create/undo/redo are
+  /// category-scoped, so refreshing one list (instead of all four +
+  /// the sprite-range fetch in `refreshRows`) is the cheap path —
+  /// `list_appearances` rebuilds + serializes every row, so doing 1/4
+  /// of the work matters on a 45k-object catalog. "sprites"/"sheets"
+  /// have no appearance rows; nothing to do.
+  async refreshCategoryRows(category) {
+    if (category === "sprites" || category === "sheets") return;
+    const rows = await invoke<AppearanceRow[]>("list_appearances", { category });
+    set((s) => ({
+      rowsByCategory: { ...s.rowsByCategory, [category]: rows },
+    }));
+  },
+
+  /// Re-fetch only the sprite-sheet ranges (Sprites/Sheets tabs).
+  /// Creating a sheet doesn't touch appearances, so the all-four
+  /// `refreshRows` was pure waste there.
+  async refreshSpriteRanges() {
+    const spriteRanges = await invoke<SpriteRangeDto[]>("list_sprite_ranges").catch(
+      () => [] as SpriteRangeDto[],
+    );
+    set({ spriteRanges });
+  },
+
   async refreshRecent() {
     const recent = await invoke<RecentFiles>("get_recent_files");
     set({ recent });
@@ -344,7 +370,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         value,
       });
       set({ summary, error: null });
-      await get().refreshSelectedDetails();
+      // The edited row's name/flags can change what the list shows, so
+      // refresh just the active category (cheap) plus the detail pane.
+      await Promise.all([
+        get().refreshCategoryRows(category),
+        get().refreshSelectedDetails(),
+      ]);
     } catch (e) {
       set({ error: String(e) });
     }
@@ -355,7 +386,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     try {
       const summary = await invoke<WorkspaceSummary>("undo");
       set({ summary, error: null });
-      await Promise.all([get().refreshRows(), get().refreshSelectedDetails()]);
+      // Undo/redo only ever touch one entity in the active category;
+      // re-listing that one category beats the old all-four refresh.
+      await Promise.all([
+        get().refreshCategoryRows(get().category),
+        get().refreshSelectedDetails(),
+      ]);
     } catch (e) {
       set({ error: String(e) });
     }
@@ -366,7 +402,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     try {
       const summary = await invoke<WorkspaceSummary>("redo");
       set({ summary, error: null });
-      await Promise.all([get().refreshRows(), get().refreshSelectedDetails()]);
+      await Promise.all([
+        get().refreshCategoryRows(get().category),
+        get().refreshSelectedDetails(),
+      ]);
     } catch (e) {
       set({ error: String(e) });
     }
@@ -394,8 +433,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   async fetchSpritePng(spriteId) {
     try {
-      const dataUrl = await invoke<string | null>("get_sprite_png", { spriteId });
-      return dataUrl;
+      // Binary IPC: the command returns raw PNG bytes (ArrayBuffer),
+      // not a base64 data-URL string. Wrap in a Blob + object URL so
+      // the browser decodes off the JS thread and we skip the 33%
+      // base64 inflation + JSON re-encode the old path paid per tile.
+      const buf = await invoke<ArrayBuffer>("get_sprite_png", { spriteId });
+      if (!buf || buf.byteLength === 0) return null;
+      const blob = new Blob([buf], { type: "image/png" });
+      return URL.createObjectURL(blob);
     } catch (e) {
       set({ error: String(e) });
       return null;
@@ -508,7 +553,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const info = await invoke<{ appearanceId: number }>("create_object_appearance");
       const summary = await invoke<WorkspaceSummary>("get_workspace_summary");
       set({ summary, category: "object" });
-      await get().refreshRows();
+      // Create is Object-scoped — one category list, not all four.
+      await get().refreshCategoryRows("object");
       await get().setSelected(info.appearanceId);
     } catch (e) {
       set({ error: String(e) });
@@ -553,7 +599,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         spritetype,
       });
       clearSpriteUrlCache();
-      await get().refreshRows();
+      await get().refreshSpriteRanges();
       set({ spriteCacheBust: get().spriteCacheBust + 1, error: null });
       return firstSpriteId;
     } catch (e) {

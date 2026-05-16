@@ -18,7 +18,7 @@ use atlas_appearances::{AppearanceInfo, Appearances, FixedFrameGroup};
 use atlas_core::AppearanceCategory;
 use atlas_otb::Otb;
 use atlas_sprites::{Atlas, PixelFormat, SheetInspection, SpriteDims};
-use atlas_workspace::Workspace;
+use atlas_workspace::{CrossRef, Workspace};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
@@ -480,13 +480,26 @@ pub struct WorkspaceState {
     pub appearances_path: Option<PathBuf>,
     pub otb_path: Option<PathBuf>,
     pub recent: RecentFiles,
-    pub history: Vec<Workspace>,
-    pub future: Vec<Workspace>,
+    pub history: Vec<HistoryEntry>,
+    pub future: Vec<HistoryEntry>,
     pub dirty: bool,
     /// Loaded sprite atlas, set by `set_assets_dir`. Optional because
     /// the editor is useful for attribute work even without sprites.
     pub atlas: Option<std::sync::Arc<Atlas>>,
     pub assets_dir: Option<PathBuf>,
+    /// Memoized OTB↔appearance cross-reference. `None` means "rebuild
+    /// on next `list_appearances`". Only structural changes (open,
+    /// close, create, import, undo/redo) invalidate it — field edits
+    /// touch flags/name only and can't change the id↔client_id graph
+    /// `CrossRef` is built from, so the hot edit path never pays the
+    /// O(objects+items) rebuild.
+    pub crossref: Option<CrossRef>,
+}
+
+impl WorkspaceState {
+    fn invalidate_crossref(&mut self) {
+        self.crossref = None;
+    }
 }
 
 impl WorkspaceState {
@@ -533,11 +546,137 @@ impl WorkspaceState {
     }
 }
 
-/// Append `snapshot` to `history`, drop the oldest entries past the
+/// Which single entity a history entry targets. Keeping the grain at
+/// one appearance / one OTB item is the whole point: a snapshot is a
+/// few KB instead of a full-catalog `Workspace` clone (tens of MB on a
+/// real 15.x bundle, ×64 history slots).
+#[derive(Clone)]
+pub(crate) enum Entity {
+    Appearance { scope: AppearanceScope, id: u32 },
+    OtbItem { server_id: u16 },
+}
+
+/// The prior state of one entity. `before == None` means "this entity
+/// should not exist" — that's how `create_*` becomes undoable without
+/// special-casing: undoing an add restores the entity to *absent*.
+#[derive(Clone)]
+pub(crate) enum Snapshot {
+    Appearance(Box<AppearanceInfo>),
+    OtbItem(Box<atlas_otb::OtbItem>),
+}
+
+#[derive(Clone)]
+pub(crate) struct HistoryEntry {
+    entity: Entity,
+    before: Option<Snapshot>,
+}
+
+/// Read the current state of `entity` (clone), or `None` when it
+/// doesn't exist yet.
+fn capture_entity(ws: &Workspace, entity: &Entity) -> Option<Snapshot> {
+    match entity {
+        Entity::Appearance { scope, id } => {
+            let app = ws.appearances.as_ref()?;
+            let list = appearance_list(app, *scope);
+            list.iter()
+                .find(|a| a.id.0 == *id)
+                .map(|a| Snapshot::Appearance(Box::new(a.clone())))
+        }
+        Entity::OtbItem { server_id } => {
+            let otb = ws.otb.as_ref()?;
+            otb.items
+                .iter()
+                .find(|i| i.server_id == Some(*server_id))
+                .map(|i| Snapshot::OtbItem(Box::new(i.clone())))
+        }
+    }
+}
+
+/// Force `entity` to `target` (replace if present, insert if absent,
+/// remove when `target == None`).
+fn restore_entity(ws: &mut Workspace, entity: &Entity, target: Option<Snapshot>) {
+    match entity {
+        Entity::Appearance { scope, id } => {
+            let Some(app) = ws.appearances.as_mut() else {
+                return;
+            };
+            let list = appearance_list_mut(app, *scope);
+            match target {
+                Some(Snapshot::Appearance(a)) => {
+                    if let Some(slot) = list.iter_mut().find(|x| x.id.0 == *id) {
+                        *slot = *a;
+                    } else {
+                        list.push(*a);
+                    }
+                }
+                _ => list.retain(|x| x.id.0 != *id),
+            }
+        }
+        Entity::OtbItem { server_id } => {
+            let Some(otb) = ws.otb.as_mut() else {
+                return;
+            };
+            match target {
+                Some(Snapshot::OtbItem(i)) => {
+                    if let Some(slot) = otb
+                        .items
+                        .iter_mut()
+                        .find(|x| x.server_id == Some(*server_id))
+                    {
+                        *slot = *i;
+                    } else {
+                        otb.items.push(*i);
+                    }
+                }
+                _ => otb.items.retain(|x| x.server_id != Some(*server_id)),
+            }
+        }
+    }
+}
+
+fn appearance_list(app: &Appearances, scope: AppearanceScope) -> &[AppearanceInfo] {
+    match scope {
+        AppearanceScope::Object => &app.objects,
+        AppearanceScope::Outfit => &app.outfits,
+        AppearanceScope::Effect => &app.effects,
+        AppearanceScope::Missile => &app.missiles,
+    }
+}
+
+fn appearance_list_mut(app: &mut Appearances, scope: AppearanceScope) -> &mut Vec<AppearanceInfo> {
+    match scope {
+        AppearanceScope::Object => &mut app.objects,
+        AppearanceScope::Outfit => &mut app.outfits,
+        AppearanceScope::Effect => &mut app.effects,
+        AppearanceScope::Missile => &mut app.missiles,
+    }
+}
+
+/// Record the pre-edit state of `entity` for undo. Call **before**
+/// mutating. Returns the entry to push once the edit succeeds (so a
+/// failed validation doesn't pollute the stack).
+fn snapshot_entity(ws: &Workspace, entity: Entity) -> HistoryEntry {
+    let before = capture_entity(ws, &entity);
+    HistoryEntry { entity, before }
+}
+
+/// Apply a history entry (undo or redo direction) and return the
+/// inverse entry to push onto the opposite stack — same swap-and-return
+/// shape the old full-`Workspace` mem::replace had, just per-entity.
+fn apply_history(ws: &mut Workspace, entry: HistoryEntry) -> HistoryEntry {
+    let inverse_before = capture_entity(ws, &entry.entity);
+    restore_entity(ws, &entry.entity, entry.before);
+    HistoryEntry {
+        entity: entry.entity,
+        before: inverse_before,
+    }
+}
+
+/// Append `entry` to `history`, drop the oldest entries past the
 /// limit. Kept as a free function so both edit commands can call it
 /// without re-borrowing the same WorkspaceState mutably twice.
-fn push_history(history: &mut Vec<Workspace>, snapshot: Workspace) {
-    history.push(snapshot);
+fn push_history(history: &mut Vec<HistoryEntry>, entry: HistoryEntry) {
+    history.push(entry);
     if history.len() > HISTORY_LIMIT {
         let excess = history.len() - HISTORY_LIMIT;
         history.drain(0..excess);
@@ -561,6 +700,7 @@ pub fn open_appearances(
     // Loading new content invalidates undo history.
     guard.history.clear();
     guard.future.clear();
+    guard.invalidate_crossref();
     guard.dirty = false;
     Ok(guard.summary())
 }
@@ -579,6 +719,7 @@ pub fn open_otb(
     guard.recent.save(&app);
     guard.history.clear();
     guard.future.clear();
+    guard.invalidate_crossref();
     guard.dirty = false;
     Ok(guard.summary())
 }
@@ -604,7 +745,7 @@ pub fn update_appearance_field(
     state: State<'_, SharedWorkspace>,
 ) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let snapshot = guard.workspace.clone();
+    let entry = snapshot_entity(&guard.workspace, Entity::Appearance { scope, id });
     let appearances = guard
         .workspace
         .appearances
@@ -613,7 +754,7 @@ pub fn update_appearance_field(
     edits::update_appearance_field(appearances, scope, id, &field, value)?;
     // Only push the snapshot now that the edit succeeded — failed
     // validation should not pollute undo history.
-    push_history(&mut guard.history, snapshot);
+    push_history(&mut guard.history, entry);
     guard.future.clear();
     guard.dirty = true;
     Ok(guard.summary())
@@ -627,14 +768,14 @@ pub fn update_otb_item_field(
     state: State<'_, SharedWorkspace>,
 ) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let snapshot = guard.workspace.clone();
+    let entry = snapshot_entity(&guard.workspace, Entity::OtbItem { server_id });
     let otb = guard
         .workspace
         .otb
         .as_mut()
         .ok_or("items.otb is not loaded")?;
     edits::update_otb_item_field(otb, server_id, &field, value)?;
-    push_history(&mut guard.history, snapshot);
+    push_history(&mut guard.history, entry);
     guard.future.clear();
     guard.dirty = true;
     Ok(guard.summary())
@@ -643,9 +784,12 @@ pub fn update_otb_item_field(
 #[tauri::command]
 pub fn undo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let prev = guard.history.pop().ok_or("nothing to undo")?;
-    let current = std::mem::replace(&mut guard.workspace, prev);
-    guard.future.push(current);
+    let entry = guard.history.pop().ok_or("nothing to undo")?;
+    let inverse = apply_history(&mut guard.workspace, entry);
+    guard.future.push(inverse);
+    // An undone create adds/removes an id, which can change the
+    // cross-ref; cheaper to drop the memo than to prove invariance.
+    guard.invalidate_crossref();
     guard.dirty = true;
     Ok(guard.summary())
 }
@@ -653,9 +797,10 @@ pub fn undo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, Strin
 #[tauri::command]
 pub fn redo(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSummary, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let next = guard.future.pop().ok_or("nothing to redo")?;
-    let current = std::mem::replace(&mut guard.workspace, next);
-    guard.history.push(current);
+    let entry = guard.future.pop().ok_or("nothing to redo")?;
+    let inverse = apply_history(&mut guard.workspace, entry);
+    guard.history.push(inverse);
+    guard.invalidate_crossref();
     guard.dirty = true;
     Ok(guard.summary())
 }
@@ -685,30 +830,45 @@ pub fn save_appearances(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSu
 #[tauri::command]
 pub fn create_object_appearance(state: State<'_, SharedWorkspace>) -> Result<NewItemInfo, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let snapshot = guard.workspace.clone();
+    let next_id = {
+        let appearances = guard
+            .workspace
+            .appearances
+            .as_ref()
+            .ok_or("appearances.dat is not loaded")?;
+        appearances
+            .objects
+            .iter()
+            .map(|a| a.id.0)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
+    };
+    if next_id == u32::MAX {
+        return Err("appearance id space exhausted".into());
+    }
+    // Entity is absent right now → snapshot captures `before = None`,
+    // so undoing this create removes the appearance again.
+    let entry = snapshot_entity(
+        &guard.workspace,
+        Entity::Appearance {
+            scope: AppearanceScope::Object,
+            id: next_id,
+        },
+    );
     let appearances = guard
         .workspace
         .appearances
         .as_mut()
         .ok_or("appearances.dat is not loaded")?;
-    let next_id = appearances
-        .objects
-        .iter()
-        .map(|a| a.id.0)
-        .max()
-        .unwrap_or(0)
-        .saturating_add(1);
-    if next_id == u32::MAX {
-        return Err("appearance id space exhausted".into());
-    }
-    let new_appearance = atlas_appearances::AppearanceInfo {
+    appearances.objects.push(atlas_appearances::AppearanceInfo {
         id: atlas_appearances::AssetId(next_id),
         category: atlas_core::AppearanceCategory::Object,
         ..Default::default()
-    };
-    appearances.objects.push(new_appearance);
-    push_history(&mut guard.history, snapshot);
+    });
+    push_history(&mut guard.history, entry);
     guard.future.clear();
+    guard.invalidate_crossref();
     guard.dirty = true;
     Ok(NewItemInfo {
         appearance_id: next_id,
@@ -725,31 +885,42 @@ pub fn create_otb_item(
     state: State<'_, SharedWorkspace>,
 ) -> Result<NewItemInfo, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let snapshot = guard.workspace.clone();
+    let next_server_id = {
+        let otb = guard
+            .workspace
+            .otb
+            .as_ref()
+            .ok_or("items.otb is not loaded")?;
+        otb.items
+            .iter()
+            .filter_map(|i| i.server_id)
+            .max()
+            .unwrap_or(99)
+            .saturating_add(1)
+    };
+    if next_server_id == u16::MAX {
+        return Err("OTB server_id space exhausted".into());
+    }
+    let entry = snapshot_entity(
+        &guard.workspace,
+        Entity::OtbItem {
+            server_id: next_server_id,
+        },
+    );
     let otb = guard
         .workspace
         .otb
         .as_mut()
         .ok_or("items.otb is not loaded")?;
-    let next_server_id = otb
-        .items
-        .iter()
-        .filter_map(|i| i.server_id)
-        .max()
-        .unwrap_or(99)
-        .saturating_add(1);
-    if next_server_id == u16::MAX {
-        return Err("OTB server_id space exhausted".into());
-    }
-    let new_item = atlas_otb::OtbItem {
+    otb.items.push(atlas_otb::OtbItem {
         group: atlas_otb::ItemGroup::None,
         server_id: Some(next_server_id),
         client_id: Some(client_id),
         ..Default::default()
-    };
-    otb.items.push(new_item);
-    push_history(&mut guard.history, snapshot);
+    });
+    push_history(&mut guard.history, entry);
     guard.future.clear();
+    guard.invalidate_crossref();
     guard.dirty = true;
     Ok(NewItemInfo {
         appearance_id: client_id as u32,
@@ -824,11 +995,23 @@ pub fn list_appearances(
     category: Category,
     state: State<'_, SharedWorkspace>,
 ) -> Result<Vec<AppearanceRow>, String> {
-    let guard = state.lock().map_err(|e| e.to_string())?;
-    let Some(appearances) = guard.workspace.appearances.as_ref() else {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    if guard.workspace.appearances.is_none() {
         return Ok(Vec::new());
-    };
+    }
+    // Build the cross-ref once and memoize it. Only the Object list
+    // consumes it, and only structural changes invalidate the cache,
+    // so repeated list calls (every refresh) reuse the same build
+    // instead of re-allocating O(objects+items) Vecs each time.
+    if matches!(category, Category::Object) && guard.crossref.is_none() {
+        guard.crossref = guard.workspace.cross_ref();
+    }
 
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .expect("checked is_some above");
     let entries: &[AppearanceInfo] = match category {
         Category::Object => &appearances.objects,
         Category::Outfit => &appearances.outfits,
@@ -836,8 +1019,8 @@ pub fn list_appearances(
         Category::Missile => &appearances.missiles,
     };
 
-    let cross_ref = match category {
-        Category::Object => guard.workspace.cross_ref(),
+    let cross_ref: Option<&CrossRef> = match category {
+        Category::Object => guard.crossref.as_ref(),
         _ => None,
     };
 
@@ -845,8 +1028,7 @@ pub fn list_appearances(
         .iter()
         .enumerate()
         .map(|(idx, app)| {
-            let (otb_server_id, is_appearance_orphan, has_otb_collision) = match cross_ref.as_ref()
-            {
+            let (otb_server_id, is_appearance_orphan, has_otb_collision) = match cross_ref {
                 Some(xr) => {
                     let matches = xr.otb_items_for(idx);
                     let server_id = matches.first().copied().and_then(|otb_idx| {
@@ -1104,15 +1286,11 @@ pub fn create_sprite_sheet(
         (atlas, dir)
     };
 
-    // Persist any pending sheet edits first — reloading the atlas
-    // below drops the in-memory cache, which would otherwise lose
-    // unsaved replace_sprite work.
-    atlas.save_dirty_sheets().map_err(|e| e.to_string())?;
-
     let entry = atlas.create_sheet(spritetype).map_err(|e| e.to_string())?;
-
+    // `create_sheet` already registered the sheet in the atlas overlay
+    // (resolvable + browsable immediately); just persist it to the
+    // on-disk catalog. No reload → the decoded-sheet cache survives.
     append_sheet_to_catalog(&assets_dir, &entry)?;
-    reload_atlas(&state, &assets_dir)?;
     Ok(entry.firstspriteid)
 }
 
@@ -1144,18 +1322,6 @@ fn append_sheet_to_catalog(
     Ok(())
 }
 
-/// Rebuild the in-memory atlas from disk so a freshly written sheet +
-/// catalog entry become resolvable. The sheet file must already be on
-/// disk before calling.
-fn reload_atlas(
-    state: &State<'_, SharedWorkspace>,
-    assets_dir: &std::path::Path,
-) -> Result<(), String> {
-    let reloaded = Atlas::from_assets_dir(assets_dir).map_err(|e| e.to_string())?;
-    let mut guard = state.lock().map_err(|e| e.to_string())?;
-    guard.atlas = Some(std::sync::Arc::new(reloaded));
-    Ok(())
-}
 
 /// Map an OBD tile composition (`tile_w` × `tile_h`, in 32px units) to
 /// the catalog `spritetype` whose tile size matches. Tibia only ships
@@ -1253,8 +1419,6 @@ pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32
         )
     };
 
-    // Flush pending sheet edits — the reload below drops the cache.
-    atlas.save_dirty_sheets().map_err(|e| e.to_string())?;
     let entry = atlas.create_sheet(spritetype).map_err(|e| e.to_string())?;
     let capacity = (entry.lastspriteid - entry.firstspriteid + 1) as usize;
     if total_sprites > capacity {
@@ -1264,11 +1428,10 @@ pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32
         ));
     }
     append_sheet_to_catalog(&assets_dir, &entry)?;
-    reload_atlas(&state, &assets_dir)?;
 
-    // Allocate ids sequentially and blit every composed sprite into the
-    // fresh sheet on the reloaded atlas.
-    let atlas = checkout_atlas(&state)?.ok_or("atlas vanished after reload")?;
+    // The new sheet is already registered in the atlas overlay, so
+    // `replace_sprite` resolves the fresh ids on the *same* atlas —
+    // no reload, the decoded-sheet cache stays warm.
     let mut sprite_ids_per_group: Vec<Vec<u32>> = Vec::new();
     let mut next_id = entry.firstspriteid;
     for fg in &import.frame_groups {
@@ -1286,7 +1449,6 @@ pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32
 
     // Append the appearance to the proto and persist appearances.dat.
     let mut guard = state.lock().map_err(|e| e.to_string())?;
-    let snapshot = guard.workspace.clone();
     let appearances = guard
         .workspace
         .appearances
@@ -1307,8 +1469,12 @@ pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32
     let appearance = super::obd::build_appearance(&import, new_id, &sprite_ids_per_group);
     list.push(appearance);
 
-    push_history(&mut guard.history, snapshot);
+    // An import writes sheets + catalog + appearances.dat to disk, so
+    // it isn't a reversible in-memory delta — clearing the undo stack
+    // (same as opening a file) keeps memory and disk in agreement.
+    guard.history.clear();
     guard.future.clear();
+    guard.invalidate_crossref();
     guard.dirty = true;
 
     // Persist appearances.dat right away so the import survives a crash.
@@ -1367,9 +1533,8 @@ pub fn list_sprite_ranges(
         return Ok(Vec::new());
     };
     let rows = atlas
-        .catalog()
-        .sheets
-        .iter()
+        .all_sheets()
+        .into_iter()
         .filter_map(|s| {
             // Unknown sprite types are skipped — the renderer wouldn't
             // know how to crop tiles out of them anyway.
@@ -1380,7 +1545,7 @@ pub fn list_sprite_ranges(
                 spritetype: s.spritetype,
                 width: dims.width,
                 height: dims.height,
-                sheet_file: s.file.clone(),
+                sheet_file: s.file,
             })
         })
         .collect();
@@ -1435,15 +1600,14 @@ pub fn set_assets_dir(
     state: State<'_, SharedWorkspace>,
 ) -> Result<AssetsDirInfo, String> {
     let atlas = Atlas::from_assets_dir(&path).map_err(|e| e.to_string())?;
+    let sheets = atlas.all_sheets();
     let info = AssetsDirInfo {
         path: path.clone(),
-        sheet_count: atlas.catalog().sheets.len(),
-        sprite_id_range: atlas
-            .catalog()
-            .sheets
+        sheet_count: sheets.len(),
+        sprite_id_range: sheets
             .first()
             .map(|s| s.firstspriteid)
-            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid)),
+            .zip(sheets.last().map(|s| s.lastspriteid)),
     };
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     guard.atlas = Some(std::sync::Arc::new(atlas));
@@ -1471,13 +1635,12 @@ pub fn open_assets_bundle(
         None => None,
     };
 
-    let sheet_count = atlas.catalog().sheets.len();
-    let sprite_id_range = atlas
-        .catalog()
-        .sheets
+    let sheets = atlas.all_sheets();
+    let sheet_count = sheets.len();
+    let sprite_id_range = sheets
         .first()
         .map(|s| s.firstspriteid)
-        .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid));
+        .zip(sheets.last().map(|s| s.lastspriteid));
 
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     guard.atlas = Some(std::sync::Arc::new(atlas));
@@ -1492,6 +1655,7 @@ pub fn open_assets_bundle(
         }
         guard.history.clear();
         guard.future.clear();
+        guard.invalidate_crossref();
         guard.dirty = false;
     }
 
@@ -1558,19 +1722,18 @@ pub fn get_assets_dir_info(
     let Some(atlas) = guard.atlas.as_ref() else {
         return Ok(None);
     };
+    let sheets = atlas.all_sheets();
     Ok(Some(AssetsDirInfo {
         path: guard
             .assets_dir
             .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_default(),
-        sheet_count: atlas.catalog().sheets.len(),
-        sprite_id_range: atlas
-            .catalog()
-            .sheets
+        sheet_count: sheets.len(),
+        sprite_id_range: sheets
             .first()
             .map(|s| s.firstspriteid)
-            .zip(atlas.catalog().sheets.last().map(|s| s.lastspriteid)),
+            .zip(sheets.last().map(|s| s.lastspriteid)),
     }))
 }
 
@@ -1622,12 +1785,14 @@ pub fn get_sprite_pixel_format(
     Ok(guard.atlas.as_ref().map(|a| a.pixel_format()))
 }
 
-/// Encode the requested sprite as a `data:image/png;base64,...` string
-/// so the frontend can drop it directly into an `<img src>`. Returns
-/// `None` when the assets dir is not set; returns an error when the
-/// sprite id cannot be located or the sheet fails to decode.
+/// Return the requested sprite as raw PNG bytes over a **binary** IPC
+/// channel (`tauri::ipc::Response`) — no base64 inflation, no JSON
+/// re-encode. The frontend wraps the `ArrayBuffer` in a `Blob` +
+/// object URL. An empty body means "assets dir not set" (the frontend
+/// treats it as a soft miss); a hard error means the sprite id is
+/// unknown or the sheet failed to decode.
 ///
-/// The Atlas keeps a PNG cache keyed by sprite_id, so the second
+/// The Atlas keeps a raw-PNG cache keyed by sprite_id, so the second
 /// (and every subsequent) request for the same id is a DashMap
 /// lookup — that's what keeps the Sprites grid responsive while
 /// the user scrolls.
@@ -1635,18 +1800,17 @@ pub fn get_sprite_pixel_format(
 pub fn get_sprite_png(
     sprite_id: u32,
     state: State<'_, SharedWorkspace>,
-) -> Result<Option<String>, String> {
+) -> Result<tauri::ipc::Response, String> {
     // The mutex is held just long enough to clone the Arc; everything
-    // after — sheet load, crop, PNG encode, base64 — runs lock-free,
-    // sharing the Atlas's internal `DashMap` caches with whatever
-    // other sprite calls are in flight. Fast scroll through 100k
-    // tiles used to freeze the app because each `get_sprite_png`
-    // had to wait its turn on this mutex.
+    // after — sheet load, crop, PNG encode — runs lock-free, sharing
+    // the Atlas's internal `DashMap` caches with whatever other sprite
+    // calls are in flight. Fast scroll through 100k tiles used to
+    // freeze the app because each call had to wait on this mutex.
     let Some(atlas) = checkout_atlas(&state)? else {
-        return Ok(None);
+        return Ok(tauri::ipc::Response::new(Vec::new()));
     };
-    let url = atlas
-        .sprite_data_url(sprite_id)
+    let bytes = atlas
+        .sprite_png_bytes(sprite_id)
         .map_err(|e| e.to_string())?;
-    Ok(Some((*url).clone()))
+    Ok(tauri::ipc::Response::new((*bytes).clone()))
 }

@@ -3,18 +3,23 @@ import { ImageOff } from "lucide-react";
 
 import { useWorkspace } from "./store";
 import { cn } from "../../shared/utils";
+import { phaseForElapsed, subscribeSpriteClock } from "./spriteClock";
 
-/// Module-level data URL cache. Survives every tile mount/unmount
+/// Module-level object-URL cache. Survives every tile mount/unmount
 /// cycle, so re-visiting a sprite is a synchronous lookup with no IPC.
-/// The backend keeps its own cache too — this one's purpose is purely
-/// to skip the IPC round-trip on re-mount.
+/// The backend keeps its own raw-PNG cache too — this one's purpose is
+/// purely to skip the IPC round-trip (and a fresh Blob) on re-mount.
 ///
-/// Cleared from `clearSpriteUrlCache` when the user opens a new
-/// assets bundle or flips the pixel format (sprite_ids may now point
-/// at different pixels).
+/// Entries are `blob:` object URLs now, so clearing must `revokeObjectURL`
+/// every one or the underlying Blobs leak for the page's lifetime.
+/// Cleared when the user opens a new assets bundle or flips the pixel
+/// format (sprite_ids may now point at different pixels).
 const SPRITE_URL_CACHE = new Map<number, string>();
 
 export function clearSpriteUrlCache(): void {
+  for (const url of SPRITE_URL_CACHE.values()) {
+    if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+  }
   SPRITE_URL_CACHE.clear();
 }
 
@@ -93,11 +98,21 @@ export const SpriteThumb = memo(function SpriteThumb({
           .then((u) => {
             if (cancelled) return;
             if (u) {
-              SPRITE_URL_CACHE.set(id, u);
+              // Another thumb may have raced us to the same id. Keep
+              // the first cached object URL and revoke our duplicate
+              // so the extra Blob doesn't leak.
+              const existing = SPRITE_URL_CACHE.get(id);
+              let url = u;
+              if (existing && existing !== u) {
+                if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+                url = existing;
+              } else {
+                SPRITE_URL_CACHE.set(id, u);
+              }
               setUrls((prev) => {
-                if (prev[idx] === u) return prev;
+                if (prev[idx] === url) return prev;
                 const next = prev.slice();
-                next[idx] = u;
+                next[idx] = url;
                 return next;
               });
             } else if (idx === 0) {
@@ -118,29 +133,26 @@ export const SpriteThumb = memo(function SpriteThumb({
     };
   }, [stableIds, fetchSpritePng, cacheBust]);
 
-  // Drive the animation phase off a stable interval. Re-enter every
-  // time the cycle length or per-phase duration changes.
+  // Drive the animation phase off the single shared sprite clock
+  // instead of a per-thumb timer. Phase is derived from absolute
+  // elapsed time, so the coarse shared tick can't drift it. Only
+  // re-render when the computed phase actually changes.
   const durationsKey = (durationsMs ?? []).join(",");
-  const phaseRef = useRef(0);
-  phaseRef.current = phase;
+  const startRef = useRef(performance.now());
   useEffect(() => {
     if (stableIds.length <= 1) return;
-    let cancelled = false;
-    const schedule = () => {
-      const current = phaseRef.current;
-      const ms = durationsMs?.[current] ?? DEFAULT_PHASE_MS;
-      const timeout = setTimeout(() => {
-        if (cancelled) return;
-        setPhase((p) => (p + 1) % stableIds.length);
-        schedule();
-      }, Math.max(40, ms));
-      return timeout;
-    };
-    const handle = schedule();
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
+    startRef.current = performance.now();
+    setPhase(0);
+    const unsub = subscribeSpriteClock((now) => {
+      const next = phaseForElapsed(
+        now - startRef.current,
+        stableIds.length,
+        durationsMs,
+        DEFAULT_PHASE_MS,
+      );
+      setPhase((p) => (p === next ? p : next));
+    });
+    return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stableIds, durationsKey]);
 

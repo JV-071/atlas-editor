@@ -40,7 +40,6 @@ use std::path::{Path, PathBuf};
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dashmap::DashMap;
 use serde::Deserialize;
 use thiserror::Error;
@@ -314,23 +313,24 @@ impl Catalog {
 ///
 /// - `sheet_cache` keeps fully decoded sheet images, so cropping
 ///   tile N+1 out of the same sheet is just a pixel copy.
-/// - `png_cache` keeps the encoded `data:image/png;base64,…` string
-///   per sprite id, so re-visiting a tile (which happens constantly
-///   while the user scrolls the Sprites grid) skips the PNG encode
-///   + base64 round-trip entirely.
+/// - `png_cache` keeps the encoded **raw PNG bytes** per sprite id, so
+///   re-visiting a tile (which happens constantly while the user
+///   scrolls the Sprites grid) skips the PNG encode entirely. The
+///   bytes travel to the webview over a binary IPC channel — no
+///   base64 inflation, no JSON re-encode.
 ///
 /// Both caches are kept until the `Atlas` is dropped — for editor
 /// use cases this is fine since the user opens one client tree at a
-/// time. A real Tibia catalog has ~100k sprites; assuming ~1.5 KB per
-/// data URL on average, the PNG cache tops out around 150 MB worst
-/// case (only the sprites the user actually scrolled past). That's
-/// acceptable for a desktop editor.
+/// time. A real Tibia catalog has ~100k sprites; raw 32×32 PNGs are
+/// ~0.5–1 KB, so the cache tops out around 100 MB worst case (only
+/// the sprites the user actually scrolled past). Acceptable for a
+/// desktop editor — and lighter than the old base64-string cache.
 pub struct Atlas {
     catalog: Catalog,
     /// Cache of decoded sheets keyed by file name relative to `assets_dir`.
     sheet_cache: DashMap<String, std::sync::Arc<RgbaImage>>,
-    /// Cache of encoded PNG data URLs keyed by sprite id.
-    png_cache: DashMap<u32, std::sync::Arc<String>>,
+    /// Cache of encoded raw PNG bytes keyed by sprite id.
+    png_cache: DashMap<u32, std::sync::Arc<Vec<u8>>>,
     /// Some client builds wrap each sheet in a BMP container after
     /// LZMA decompression; others write raw BGRA. Default is `false`
     /// (raw BGRA after a 32-byte header) which matches the modern
@@ -346,6 +346,12 @@ pub struct Atlas {
     /// 32-byte Cipsoft prefix (preserved verbatim on write-back).
     /// Empty until the first `replace_sprite` / `create_sheet`.
     dirty_sheets: DashMap<String, [u8; pack::SHEET_PREFIX_LEN]>,
+    /// Sheets created at runtime via `create_sheet`. Kept as an overlay
+    /// on top of the immutable parsed `catalog` so a new sheet becomes
+    /// resolvable *without* reparsing catalog-content.json and dropping
+    /// the decoded-sheet cache (which would force a full re-LZMA on the
+    /// next view). Read only on a `sheet_for` miss; new sheets are few.
+    appended_sheets: std::sync::RwLock<Vec<SpriteSheetEntry>>,
 }
 
 impl Atlas {
@@ -357,7 +363,34 @@ impl Atlas {
             bmp_wrap: false,
             pixel_format: AtomicU8::new(PixelFormat::default() as u8),
             dirty_sheets: DashMap::new(),
+            appended_sheets: std::sync::RwLock::new(Vec::new()),
         }
+    }
+
+    /// Resolve the sheet owning `sprite_id`, consulting the parsed
+    /// catalog first and the runtime-created overlay on a miss. Returns
+    /// an owned clone (the entry is tiny: a `String` + four `u32`s) so
+    /// callers don't hold the overlay lock.
+    fn resolve_sheet(&self, sprite_id: u32) -> Option<SpriteSheetEntry> {
+        if let Some(s) = self.catalog.sheet_for(sprite_id) {
+            return Some(s.clone());
+        }
+        self.appended_sheets
+            .read()
+            .ok()?
+            .iter()
+            .find(|s| sprite_id >= s.firstspriteid && sprite_id <= s.lastspriteid)
+            .cloned()
+    }
+
+    /// Every sheet the atlas knows about (parsed catalog + runtime
+    /// additions), for the Sprites/Sheets browsers.
+    pub fn all_sheets(&self) -> Vec<SpriteSheetEntry> {
+        let mut out = self.catalog.sheets.clone();
+        if let Ok(extra) = self.appended_sheets.read() {
+            out.extend(extra.iter().cloned());
+        }
+        out
     }
 
     pub fn from_assets_dir(dir: impl AsRef<Path>) -> Result<Self> {
@@ -402,8 +435,7 @@ impl Atlas {
     /// inspect the on-disk layout without rebuilding.
     pub fn inspect(&self, sprite_id: u32) -> Result<SheetInspection> {
         let sheet = self
-            .catalog
-            .sheet_for(sprite_id)
+            .resolve_sheet(sprite_id)
             .ok_or(SpriteError::UnknownSprite(sprite_id))?;
         let path = self.catalog.assets_dir.join(&sheet.file);
         let raw = std::fs::read(&path).map_err(|e| SpriteError::Io {
@@ -442,14 +474,14 @@ impl Atlas {
         })
     }
 
-    /// Encode the requested sprite as a `data:image/png;base64,…`
-    /// string ready to drop into an `<img src>`. The full pipeline
-    /// (sheet load + crop + PNG encode + base64) is cached per sprite
-    /// id; repeat calls return the cached `Arc<String>` in O(1).
+    /// Encode the requested sprite as raw PNG bytes. The full pipeline
+    /// (sheet load + crop + PNG encode) is cached per sprite id; repeat
+    /// calls return the cached `Arc<Vec<u8>>` in O(1). The caller ships
+    /// these straight over a binary IPC channel — no base64, no JSON.
     ///
     /// The Sprites grid relies on this — scrolling fast across 100k
     /// tiles would otherwise PNG-encode each one over and over.
-    pub fn sprite_data_url(&self, sprite_id: u32) -> Result<std::sync::Arc<String>> {
+    pub fn sprite_png_bytes(&self, sprite_id: u32) -> Result<std::sync::Arc<Vec<u8>>> {
         if let Some(hit) = self.png_cache.get(&sprite_id) {
             return Ok(hit.clone());
         }
@@ -463,18 +495,16 @@ impl Atlas {
             image::ColorType::Rgba8.into(),
         )
         .map_err(|e| SpriteError::Catalog(format!("png encode for sprite {sprite_id}: {e}")))?;
-        let encoded = BASE64.encode(&buf);
-        let url = std::sync::Arc::new(format!("data:image/png;base64,{encoded}"));
-        self.png_cache.insert(sprite_id, url.clone());
-        Ok(url)
+        let bytes = std::sync::Arc::new(buf);
+        self.png_cache.insert(sprite_id, bytes.clone());
+        Ok(bytes)
     }
 
     /// Return the RGBA-decoded sprite tile for `sprite_id`. Errors if
     /// no sheet covers the id, or if the sheet fails to decompress.
     pub fn sprite(&self, sprite_id: u32) -> Result<RgbaImage> {
         let sheet = self
-            .catalog
-            .sheet_for(sprite_id)
+            .resolve_sheet(sprite_id)
             .ok_or(SpriteError::UnknownSprite(sprite_id))?;
         let sheet_image = self.load_sheet(&sheet.file)?;
         let dims = SpriteDims::from_spritetype(sheet.spritetype)?;
@@ -530,8 +560,7 @@ impl Atlas {
     /// dirty until [`Self::save_dirty_sheets`] flushes it to disk.
     pub fn replace_sprite(&self, sprite_id: u32, replacement: &RgbaImage) -> Result<()> {
         let sheet = self
-            .catalog
-            .sheet_for(sprite_id)
+            .resolve_sheet(sprite_id)
             .ok_or(SpriteError::UnknownSprite(sprite_id))?;
         let file = sheet.file.clone();
         let spritetype = sheet.spritetype;
@@ -640,14 +669,23 @@ impl Atlas {
             })
             .unwrap_or(SHEET_SIDES[0]);
         let per_sheet = (side / dims.width) * (side / dims.height);
-        let firstspriteid = self
+        // Highest id across the parsed catalog *and* any sheet already
+        // created this session, so back-to-back `create_sheet` calls
+        // don't hand out overlapping id ranges.
+        let max_last = self
             .catalog
             .sheets
             .iter()
             .map(|s| s.lastspriteid)
-            .max()
-            .map(|m| m + 1)
-            .unwrap_or(0);
+            .chain(
+                self.appended_sheets
+                    .read()
+                    .map(|v| v.iter().map(|s| s.lastspriteid).max())
+                    .ok()
+                    .flatten(),
+            )
+            .max();
+        let firstspriteid = max_last.map(|m| m + 1).unwrap_or(0);
         let lastspriteid = firstspriteid + per_sheet - 1;
 
         let img = pack::blank_sheet(side);
@@ -666,13 +704,19 @@ impl Atlas {
         // immediately without a disk round-trip.
         self.sheet_cache
             .insert(file.clone(), std::sync::Arc::new(img));
-        Ok(SpriteSheetEntry {
+        let entry = SpriteSheetEntry {
             file,
             spritetype,
             firstspriteid,
             lastspriteid,
             area: 0,
-        })
+        };
+        // Register in the overlay so `resolve_sheet` / `all_sheets`
+        // see it immediately — no atlas reload, no cache drop.
+        if let Ok(mut extra) = self.appended_sheets.write() {
+            extra.push(entry.clone());
+        }
+        Ok(entry)
     }
 
 
