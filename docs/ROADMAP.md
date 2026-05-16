@@ -17,8 +17,8 @@ pass. Estimates are calendar-light: hours of focused work, not wall-clock.
 | 5 | Sprite sheet editor (v1)    | ~8h    | `feat/phase-5-sheet-editor`         | Done |
 | 5b| Sprite sheet write-back     | ~12h   | `feat/phase-5b-sheet-writeback`     | Done |
 | 6 | Cross-client importer (OBD) | ~14h   | `feat/phase-6-importer`             | Done |
-| 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | Pending |
-| 8 | Lua scripting               | ~24h   | `feat/phase-8-lua`                  | Pending |
+| 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | In progress |
+| 8 | Lua scripting               | ~24h   | `feat/phase-8-lua`                  | Skipped (user opted out) |
 
 Total: ~106h.
 
@@ -222,19 +222,35 @@ in the right category and selects it; appearances.dat is saved.
 asset paths and decoding flags.
 
 **Changes**
-- `tauri-plugin-store` added for persisted profile storage.
-- `src-tauri/src/profiles.rs` (new) — `Profile { name, assets_path, transparent, extended, sprite_format }`.
-- `src-tauri/src/assets/commands.rs` — `list_profiles`, `save_profile`,
-  `delete_profile`, `apply_profile`.
-- `frontend/src/tools/assets/ProfileSwitcher.tsx` (new) — combobox in the
-  editor header with New / Rename / Delete.
-- Launcher reads `currentProfile` as the primary source ahead of the
-  recent-files MRU.
+- No new dependency: profiles persist via the same hand-rolled
+  app-config-dir JSON strategy as `RecentFiles` (`profiles.json`),
+  not `tauri-plugin-store` — a flat list doesn't justify the dep.
+- `Profile { name, assets_path, pixel_format }` lives in
+  `commands.rs` (next to `RecentFiles`). The legacy reference's
+  `transparent`/`extended`/`server_path` fields don't apply to the
+  modern bundle — assets dir + pixel format is all that matters.
+- `src-tauri/src/assets/commands.rs` — `list_profiles`,
+  `save_profile` (upsert), `rename_profile`, `delete_profile`.
+  `apply_profile` is composed frontend-side (reuses
+  `openAssetsBundlePath` + `set_sprite_pixel_format`) rather than a
+  dedicated backend command.
+- `frontend/src/tools/assets/ProfileSwitcher.tsx` (new) — toolbar
+  dropdown: switch / save-current / inline-rename / delete; shows the
+  active profile + pixel format.
+- Launcher lists profiles as a primary entry above the recent-files
+  MRU; clicking one applies it.
 
-**Acceptance:** creating "Live 12.91" and "Server 15.0" profiles and switching
-between them opens the right bundle without re-picking a folder.
+**Acceptance:** creating "Live 12.91" and "Server 15.0" profiles and
+switching between them opens the right bundle (and its pixel format)
+without re-picking a folder; profiles survive an app restart.
 
-## Phase 8 — Lua scripting
+## Phase 8 — Lua scripting — SKIPPED
+
+The user opted out of this phase (2026-05-16): the search/filter/bulk
+work from phases 1–4 already covers the common audit cases, and the
+~24h cost + bug surface of embedding a Lua VM, Monaco and a chart
+library wasn't worth it for this project. Kept below for reference if
+it's ever revisited.
 
 **Scope:** a Lua editor + execution + tabular and chart output, matching
 `LuaWindow.xaml.cs` from the reference.

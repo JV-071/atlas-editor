@@ -367,6 +367,109 @@ impl RecentFiles {
     }
 }
 
+/// A named bundle bookmark. Unlike the recent-files MRU (which is just
+/// a path list), a profile pins the assets directory together with the
+/// pixel format that decodes its sheets correctly — so switching
+/// between a live Tibia client and a custom OT server bundle is one
+/// click instead of re-picking the folder and re-cycling the format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    pub name: String,
+    pub assets_path: String,
+    /// Stored as the lowercase string the `PixelFormat` enum
+    /// serializes to (`bgra` / `rgba` / `argb` / `abgr`).
+    pub pixel_format: String,
+}
+
+/// Persisted set of profiles. Same on-disk strategy as `RecentFiles`:
+/// one pretty-printed JSON file in the platform app-config dir, loaded
+/// once on startup and rewritten on every mutation. Avoids pulling in
+/// `tauri-plugin-store` for what is a tiny flat list.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Profiles {
+    pub items: Vec<Profile>,
+}
+
+impl Profiles {
+    const FILE: &'static str = "profiles.json";
+
+    fn config_path(app: &AppHandle) -> Option<PathBuf> {
+        app.path().app_config_dir().ok().map(|d| d.join(Self::FILE))
+    }
+
+    fn load(app: &AppHandle) -> Self {
+        let Some(path) = Self::config_path(app) else {
+            return Self::default();
+        };
+        std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+
+    fn save(&self, app: &AppHandle) -> Result<(), String> {
+        let path = Self::config_path(app).ok_or("no app config dir")?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
+        }
+        let bytes = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
+        std::fs::write(&path, bytes).map_err(|e| format!("write {path:?}: {e}"))
+    }
+
+    /// Insert or replace by name (case-sensitive, exact match).
+    fn upsert(&mut self, profile: Profile) {
+        if let Some(slot) = self.items.iter_mut().find(|p| p.name == profile.name) {
+            *slot = profile;
+        } else {
+            self.items.push(profile);
+        }
+    }
+}
+
+#[tauri::command]
+pub fn list_profiles(app: AppHandle) -> Result<Vec<Profile>, String> {
+    Ok(Profiles::load(&app).items)
+}
+
+#[tauri::command]
+pub fn save_profile(app: AppHandle, profile: Profile) -> Result<Vec<Profile>, String> {
+    if profile.name.trim().is_empty() {
+        return Err("profile name cannot be empty".into());
+    }
+    let mut profiles = Profiles::load(&app);
+    profiles.upsert(profile);
+    profiles.save(&app)?;
+    Ok(profiles.items)
+}
+
+#[tauri::command]
+pub fn rename_profile(
+    app: AppHandle,
+    old_name: String,
+    new_name: String,
+) -> Result<Vec<Profile>, String> {
+    if new_name.trim().is_empty() {
+        return Err("profile name cannot be empty".into());
+    }
+    let mut profiles = Profiles::load(&app);
+    let Some(slot) = profiles.items.iter_mut().find(|p| p.name == old_name) else {
+        return Err(format!("profile {old_name:?} not found"));
+    };
+    slot.name = new_name;
+    profiles.save(&app)?;
+    Ok(profiles.items)
+}
+
+#[tauri::command]
+pub fn delete_profile(app: AppHandle, name: String) -> Result<Vec<Profile>, String> {
+    let mut profiles = Profiles::load(&app);
+    profiles.items.retain(|p| p.name != name);
+    profiles.save(&app)?;
+    Ok(profiles.items)
+}
+
 /// Server-side state container. Holds the parsed `Workspace` plus the
 /// disk paths the user picked, MRU list, and the undo/redo snapshot
 /// stacks. Wrapped in `Mutex` so commands can take `&Self` and still

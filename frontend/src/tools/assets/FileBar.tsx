@@ -5,6 +5,7 @@ import logoUrl from "../../shared/logo.png";
 import { useWorkspace } from "./store";
 import { cn } from "../../shared/utils";
 import { ExportQueueButton } from "./ExportQueueButton";
+import { ProfileSwitcher } from "./ProfileSwitcher";
 import { SearchDialog } from "./SearchDialog";
 import { ImportDialog } from "./ImportDialog";
 import { useT } from "../../i18n";
@@ -140,6 +141,7 @@ export function FileBar() {
       </div>
 
       <div className="flex items-center gap-1">
+        <ProfileSwitcher />
         <button
           type="button"
           onClick={() => void undo()}

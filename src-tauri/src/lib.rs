@@ -79,6 +79,10 @@ pub fn run() {
             assets::commands::create_sprite_sheet,
             assets::commands::preview_obd,
             assets::commands::import_obd,
+            assets::commands::list_profiles,
+            assets::commands::save_profile,
+            assets::commands::rename_profile,
+            assets::commands::delete_profile,
             // Converter
             converter::commands::converter_peek,
             converter::commands::converter_run,

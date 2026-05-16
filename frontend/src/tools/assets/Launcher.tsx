@@ -7,6 +7,7 @@ import {
   FolderOpen,
   ImagePlus,
   RotateCcw,
+  UserCog,
 } from "lucide-react";
 
 import { useApp } from "../../appStore";
@@ -108,12 +109,16 @@ export function Launcher() {
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
   const enterEditor = useWorkspace((s) => s.enterEditor);
   const refreshRecent = useWorkspace((s) => s.refreshRecent);
+  const profiles = useWorkspace((s) => s.profiles);
+  const refreshProfiles = useWorkspace((s) => s.refreshProfiles);
+  const applyProfile = useWorkspace((s) => s.applyProfile);
   const setTool = useApp((s) => s.setTool);
   const t = useT();
 
   useEffect(() => {
     void refreshRecent();
-  }, [refreshRecent]);
+    void refreshProfiles();
+  }, [refreshRecent, refreshProfiles]);
 
   const hasAssets = assetsDir != null;
 
@@ -202,6 +207,35 @@ export function Launcher() {
             </button>
           </div>
         </div>
+      )}
+
+      {!hasAssets && profiles.length > 0 && (
+        <section className="mt-5 w-full max-w-xl">
+          <h2 className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold mb-1.5">
+            {t("profiles.title")}
+          </h2>
+          <ul className="space-y-0.5 text-sm">
+            {profiles.map((p) => (
+              <li key={`profile-${p.name}`}>
+                <button
+                  type="button"
+                  onClick={() => void applyProfile(p.name)}
+                  title={p.assetsPath}
+                  className="w-full text-left flex items-baseline gap-2 px-2 py-1 rounded hover:bg-atlas-sand"
+                >
+                  <UserCog className="h-3.5 w-3.5 shrink-0 self-center text-atlas-muted" />
+                  <span className="text-atlas-ink shrink-0">{p.name}</span>
+                  <span className="text-[10px] font-mono text-atlas-muted shrink-0">
+                    {p.pixelFormat}
+                  </span>
+                  <span className="text-[11px] text-atlas-muted truncate">
+                    {p.assetsPath}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {!hasAssets && recentAssetsPaths.length > 0 && (

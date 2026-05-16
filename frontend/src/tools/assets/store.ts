@@ -40,6 +40,7 @@ import {
   type ExportFormat,
   type ExportReport,
   type PixelFormat,
+  type Profile,
   type RecentFiles,
   type SpriteRangeDto,
   type WorkspaceSummary,
@@ -87,6 +88,10 @@ interface WorkspaceState {
   status: LoadStatus;
   error: string | null;
   recent: RecentFiles;
+  profiles: Profile[];
+  /// Name of the profile currently applied, or `null` when the user
+  /// opened a folder directly (not via a profile).
+  activeProfile: string | null;
   assetsDir: AssetsDirInfo | null;
   pixelFormat: PixelFormat;
   spriteCacheBust: number;
@@ -120,6 +125,16 @@ interface WorkspaceState {
   pickAssetsBundle: () => Promise<void>;
   openAssetsBundlePath: (path: string) => Promise<void>;
   closeWorkspace: () => Promise<void>;
+
+  refreshProfiles: () => Promise<void>;
+  /// Open the profile's bundle and apply its pixel format. Sets it as
+  /// the active profile on success.
+  applyProfile: (name: string) => Promise<void>;
+  /// Persist the current assets dir + pixel format under `name`
+  /// (upsert). No-op when no bundle is open.
+  saveCurrentAsProfile: (name: string) => Promise<void>;
+  renameProfile: (oldName: string, newName: string) => Promise<void>;
+  deleteProfile: (name: string) => Promise<void>;
   refreshRows: () => Promise<void>;
   refreshRecent: () => Promise<void>;
   refreshSelectedDetails: () => Promise<void>;
@@ -204,6 +219,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   status: "idle",
   error: null,
   recent: emptyRecent,
+  profiles: [],
+  activeProfile: null,
   assetsDir: null,
   pixelFormat: "bgra",
   spriteCacheBust: 0,
@@ -407,6 +424,82 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (pf) set({ pixelFormat: pf });
     } catch {
       // Pre-assets state — ignore.
+    }
+  },
+
+  async refreshProfiles() {
+    try {
+      const profiles = await invoke<Profile[]>("list_profiles");
+      set({ profiles });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async applyProfile(name) {
+    const profile = get().profiles.find((p) => p.name === name);
+    if (!profile) return;
+    await get().openAssetsBundlePath(profile.assetsPath);
+    // openAssetsBundlePath sets status=error on failure; only apply the
+    // pixel format + mark active when the bundle actually loaded.
+    if (get().status === "error") return;
+    if (profile.pixelFormat !== get().pixelFormat) {
+      try {
+        const applied = await invoke<PixelFormat>("set_sprite_pixel_format", {
+          format: profile.pixelFormat,
+        });
+        clearSpriteUrlCache();
+        set({
+          pixelFormat: applied,
+          spriteCacheBust: get().spriteCacheBust + 1,
+        });
+      } catch (e) {
+        set({ error: String(e) });
+      }
+    }
+    set({ activeProfile: name });
+  },
+
+  async saveCurrentAsProfile(name) {
+    const { assetsDir, pixelFormat } = get();
+    if (!assetsDir) return;
+    try {
+      const profiles = await invoke<Profile[]>("save_profile", {
+        profile: { name, assetsPath: assetsDir.path, pixelFormat },
+      });
+      set({ profiles, activeProfile: name, error: null });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async renameProfile(oldName, newName) {
+    try {
+      const profiles = await invoke<Profile[]>("rename_profile", {
+        oldName,
+        newName,
+      });
+      set({
+        profiles,
+        activeProfile:
+          get().activeProfile === oldName ? newName : get().activeProfile,
+        error: null,
+      });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async deleteProfile(name) {
+    try {
+      const profiles = await invoke<Profile[]>("delete_profile", { name });
+      set({
+        profiles,
+        activeProfile: get().activeProfile === name ? null : get().activeProfile,
+        error: null,
+      });
+    } catch (e) {
+      set({ error: String(e) });
     }
   },
 

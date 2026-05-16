@@ -482,3 +482,11 @@ export interface ExportReport {
   format: ExportFormat;
   files: string[];
 }
+
+/// A named bundle bookmark: assets dir + the pixel format that decodes
+/// it. Mirrors the Rust `Profile` (serde camelCase).
+export interface Profile {
+  name: string;
+  assetsPath: string;
+  pixelFormat: PixelFormat;
+}

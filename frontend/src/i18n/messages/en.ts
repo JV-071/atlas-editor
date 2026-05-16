@@ -152,6 +152,15 @@ export const en = {
   "import.pick": "Pick .obd file",
   "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
   "import.commit": "Import",
+
+  "profiles.title": "Profiles",
+  "profiles.none": "No profile",
+  "profiles.empty": "No saved profiles yet.",
+  "profiles.saveCurrent": "Save current as profile…",
+  "profiles.namePlaceholder": "Profile name",
+  "profiles.save": "Save",
+  "profiles.rename": "Rename",
+  "profiles.delete": "Delete",
 } as const;
 
 export type MessageKey = keyof typeof en;

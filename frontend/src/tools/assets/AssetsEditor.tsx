@@ -54,6 +54,7 @@ export function AssetsEditor() {
   const refreshRecent = useWorkspace((s) => s.refreshRecent);
   const refreshAssetsDirInfo = useWorkspace((s) => s.refreshAssetsDirInfo);
   const refreshPixelFormat = useWorkspace((s) => s.refreshPixelFormat);
+  const refreshProfiles = useWorkspace((s) => s.refreshProfiles);
   const enterEditor = useWorkspace((s) => s.enterEditor);
 
   // On mount, sync with backend state (the parsed workspace survives
@@ -66,6 +67,7 @@ export function AssetsEditor() {
         refreshRecent(),
         refreshAssetsDirInfo(),
         refreshPixelFormat(),
+        refreshProfiles(),
       ]);
       const summary = useWorkspace.getState().summary;
       const hasState = summary.appearancesPath != null || summary.objectCount > 0;
@@ -73,7 +75,14 @@ export function AssetsEditor() {
     })().catch(() => {
       // Initial load failures shouldn't break the launcher.
     });
-  }, [refreshRows, refreshRecent, refreshAssetsDirInfo, refreshPixelFormat, enterEditor]);
+  }, [
+    refreshRows,
+    refreshRecent,
+    refreshAssetsDirInfo,
+    refreshPixelFormat,
+    refreshProfiles,
+    enterEditor,
+  ]);
 
   // Memoize per-view render so React doesn't tear down/recreate the
   // whole editor tree on launcher↔editor flips when nothing else

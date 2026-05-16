@@ -149,4 +149,13 @@ export const es: Record<MessageKey, string> = {
   "import.pick": "Elegir archivo .obd",
   "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
   "import.commit": "Importar",
+
+  "profiles.title": "Perfiles",
+  "profiles.none": "Sin perfil",
+  "profiles.empty": "Aún no hay perfiles guardados.",
+  "profiles.saveCurrent": "Guardar actual como perfil…",
+  "profiles.namePlaceholder": "Nombre del perfil",
+  "profiles.save": "Guardar",
+  "profiles.rename": "Renombrar",
+  "profiles.delete": "Eliminar",
 };
