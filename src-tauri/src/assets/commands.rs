@@ -1920,7 +1920,7 @@ pub fn find_duplicates(
             }
         })
         .collect();
-    result.sort_by(|a, b| b.ids.len().cmp(&a.ids.len()));
+    result.sort_by_key(|g| std::cmp::Reverse(g.ids.len()));
     Ok(result)
 }
 

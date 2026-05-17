@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn gif_three_frames() {
-        let frames = vec![
+        let frames = [
             solid(16, 16, [255, 0, 0, 255]),
             solid(16, 16, [0, 255, 0, 255]),
             solid(16, 16, [0, 0, 255, 255]),

@@ -182,6 +182,7 @@ fn sprite_index(dims: &ResolvedDims, phase: u32, z: u32, y: u32, x: u32, layer: 
     ((((phase * dims.pd + z) * dims.ph + y) * dims.pw + x) * dims.layers) + layer
 }
 
+#[allow(clippy::too_many_arguments)]
 fn sprite_at(
     atlas: &Atlas,
     si: &SpriteInfoData,
