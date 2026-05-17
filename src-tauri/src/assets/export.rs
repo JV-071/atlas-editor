@@ -86,6 +86,42 @@ pub fn export_appearance(
     Ok(ExportReport { format, files })
 }
 
+/// Export every unique sprite in an appearance as individual PNGs into
+/// `out_dir`. Each file is named `{sprite_id}.png`.
+pub fn export_all_sprites(
+    atlas: &Atlas,
+    appearance: &AppearanceInfo,
+    out_dir: &Path,
+) -> Result<ExportReport, String> {
+    std::fs::create_dir_all(out_dir).map_err(|e| format!("mkdir {out_dir:?}: {e}"))?;
+
+    let mut seen = std::collections::HashSet::new();
+    let mut files = Vec::new();
+
+    for fg in &appearance.frame_groups {
+        let Some(si) = fg.sprite_info.as_ref() else {
+            continue;
+        };
+        for &id in &si.sprite_ids {
+            if id == 0 || !seen.insert(id) {
+                continue;
+            }
+            let img = atlas.sprite(id).map_err(|e| e.to_string())?;
+            let bytes = encode_png_rgba(&img).map_err(|e| e.to_string())?;
+            let path = out_dir.join(format!("{id}.png"));
+            std::fs::write(&path, &bytes).map_err(|e| format!("write {path:?}: {e}"))?;
+            files.push(path);
+        }
+    }
+    if files.is_empty() {
+        return Err("no sprites to export".into());
+    }
+    Ok(ExportReport {
+        format: ExportFormat::OutfitPngs,
+        files,
+    })
+}
+
 fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {

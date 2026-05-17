@@ -12,6 +12,9 @@ import {
 import { cn } from "../../shared/utils";
 import { useT } from "../../i18n";
 import { queueKey, useWorkspace, type ExportQueueEntry } from "./store";
+import type { AppearanceCategory, AppearanceRow, ExportFormat } from "./types";
+
+const EMPTY_ROWS: AppearanceRow[] = [];
 
 /// Button in the global toolbar that surfaces the batch-export queue.
 /// Stays hidden when the queue is empty so it doesn't clutter the
@@ -21,7 +24,18 @@ import { queueKey, useWorkspace, type ExportQueueEntry } from "./store";
 /// the actual export pipeline through a folder picker.
 export function ExportQueueButton() {
   const queue = useWorkspace((s) => s.exportQueue);
+  const rawCategory = useWorkspace((s) => s.category);
+  const isAppearanceCategory = rawCategory === "object" || rawCategory === "outfit" || rawCategory === "effect" || rawCategory === "missile";
+  const category = rawCategory as AppearanceCategory;
+  const rows = useWorkspace((s) => {
+    const c = s.category;
+    if (c === "object" || c === "outfit" || c === "effect" || c === "missile") {
+      return s.rowsByCategory[c];
+    }
+    return EMPTY_ROWS;
+  });
   const toggleExportQueueEntry = useWorkspace((s) => s.toggleExportQueueEntry);
+  const enqueueAllCategory = useWorkspace((s) => s.enqueueAllCategory);
   const clearExportQueue = useWorkspace((s) => s.clearExportQueue);
   const runExportQueue = useWorkspace((s) => s.runExportQueue);
   const progress = useWorkspace((s) => s.exportProgress);
@@ -29,6 +43,7 @@ export function ExportQueueButton() {
 
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [queueFormat, setQueueFormat] = useState<"png" | "gif">("png");
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,7 +56,7 @@ export function ExportQueueButton() {
   }, [open]);
 
   const entries = useMemo(() => Array.from(queue.values()), [queue]);
-  if (entries.length === 0 && !progress) return null;
+  if (entries.length === 0 && !progress && !isAppearanceCategory) return null;
 
   const doneCount =
     progress?.filter((p) => p.status === "done").length ?? 0;
@@ -57,9 +72,20 @@ export function ExportQueueButton() {
     });
     if (!sel) return;
     const outputDir = Array.isArray(sel) ? sel[0] : sel;
+    const formatMap: Record<string, ExportFormat> = {
+      "object:png": "outfitpngs",
+      "object:gif": "itemgif",
+      "outfit:png": "outfitpngs",
+      "outfit:gif": "itemgif",
+      "effect:png": "outfitpngs",
+      "effect:gif": "effectgif",
+      "missile:png": "outfitpngs",
+      "missile:gif": "missilegif",
+    };
+    const formatOverride = formatMap[`${category}:${queueFormat}`] ?? "outfitpngs";
     setRunning(true);
     try {
-      await runExportQueue(outputDir);
+      await runExportQueue(outputDir, formatOverride);
     } finally {
       setRunning(false);
     }
@@ -146,7 +172,46 @@ export function ExportQueueButton() {
               })}
             </div>
           )}
+          <div className="flex items-center gap-2 px-3 py-2 border-t border-atlas-border">
+            <span className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold">Format</span>
+            <div className="flex rounded border border-atlas-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setQueueFormat("png")}
+                className={cn(
+                  "px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  queueFormat === "png"
+                    ? "bg-atlas-ink text-atlas-cream"
+                    : "bg-atlas-cream text-atlas-muted hover:text-atlas-ink",
+                )}
+              >
+                PNG
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueFormat("gif")}
+                className={cn(
+                  "px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  queueFormat === "gif"
+                    ? "bg-atlas-ink text-atlas-cream"
+                    : "bg-atlas-cream text-atlas-muted hover:text-atlas-ink",
+                )}
+              >
+                GIF
+              </button>
+            </div>
+          </div>
           <div className="flex items-center justify-end gap-1 p-2 border-t border-atlas-border bg-atlas-cream/50 rounded-b">
+            {rows.length > 0 && (
+              <button
+                type="button"
+                onClick={() => enqueueAllCategory(category)}
+                disabled={running}
+                className="rounded px-2 py-1 text-xs text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand disabled:opacity-40 disabled:cursor-not-allowed mr-auto"
+              >
+                + All {category}s ({rows.length})
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

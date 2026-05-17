@@ -156,11 +156,12 @@ interface WorkspaceState {
   createObjectAppearance: () => Promise<void>;
 
   toggleExportQueueEntry: (category: AppearanceCategory, id: number) => void;
+  enqueueAllCategory: (category: AppearanceCategory) => void;
   clearExportQueue: () => void;
   /// Iterate the queue, calling `export_appearance` for each item.
-  /// Returns `null` if the user cancels the folder picker, otherwise
-  /// the report of every per-item attempt.
-  runExportQueue: (outputDir: string) => Promise<ExportQueueProgress[]>;
+  /// When `formatOverride` is given it overrides the per-category
+  /// default (e.g. force PNG sprites for outfits instead of GIF).
+  runExportQueue: (outputDir: string, formatOverride?: ExportFormat) => Promise<ExportQueueProgress[]>;
 }
 
 async function fetchAllCategories(): Promise<Record<AppearanceCategory, AppearanceRow[]>> {
@@ -619,17 +620,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ exportQueue: next });
   },
 
+  enqueueAllCategory(category) {
+    const rows = get().rowsByCategory[category] ?? [];
+    const next = new Map(get().exportQueue);
+    for (const row of rows) {
+      const key = queueKey(category, row.id);
+      if (!next.has(key)) {
+        next.set(key, { category, id: row.id });
+      }
+    }
+    set({ exportQueue: next });
+  },
+
   clearExportQueue() {
     set({ exportQueue: new Map(), exportProgress: null });
   },
 
-  async runExportQueue(outputDir) {
+  async runExportQueue(outputDir, formatOverride?) {
     const entries = Array.from(get().exportQueue.values());
     if (entries.length === 0) return [];
-    // Track progress in-memory and surface it through `exportProgress`
-    // so the popover can render a live status list. We rebuild the
-    // array on every event because zustand only re-renders on
-    // reference equality.
     const progress: ExportQueueProgress[] = entries.map((entry, index) => ({
       index,
       total: entries.length,
@@ -640,7 +649,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
-      const format: ExportFormat = defaultExportFormat(entry.category);
+      const format: ExportFormat = formatOverride ?? defaultExportFormat(entry.category);
       const baseName = `${entry.category}-${entry.id}`;
       const outputPath =
         format === "outfitpngs"

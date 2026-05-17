@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, HelpCircle } from "lucide-react";
 
 import { ExportDialog } from "./ExportDialog";
 import { useWorkspace } from "./store";
@@ -23,23 +23,107 @@ import { SpritePreview } from "./SpritePreview";
 import { cn } from "../../shared/utils";
 import { useT } from "../../i18n";
 
+// ---- flag descriptions ----
+
+const FLAG_DESCRIPTIONS: Record<string, string> = {
+  container: "Item can hold other items inside (bags, backpacks, chests)",
+  cumulative: "Item is stackable (gold coins, arrows, runes)",
+  usable: "Item can be used via right-click \"Use\" (food, potions)",
+  forceuse: "Item is used by clicking on it directly (levers, doors)",
+  multiuse: "Item can be used with a crosshair on another target (ropes, shovels)",
+  take: "Item can be picked up and moved to inventory",
+  rotate: "Item can be rotated (furniture, decoration)",
+  hang: "Item can be placed on a wall hook",
+  wrap: "Item can be wrapped into a package",
+  unwrap: "Item can be unwrapped from a package",
+  liquidcontainer: "Item can hold liquids (troughs, vials)",
+  liquidpool: "Item is a liquid splash on the ground (blood, water)",
+  show_off_socket: "Item can be placed in a show-off socket (podiums)",
+  reportable: "Item can be reported for rule violations",
+  ignore_look: "\"Look\" action is suppressed for this item",
+  deco_item_kit: "Item is a decoration kit that unpacks into furniture",
+  unpass: "Item blocks creature movement (walls, fences)",
+  unmove: "Item cannot be moved by players",
+  unsight: "Item blocks projectile line-of-sight",
+  avoid: "Pathfinder avoids this tile when possible",
+  no_movement_animation: "Suppress walk animation when stepping on this tile",
+  clip: "Item is drawn below the ground border (cave floors)",
+  bottom: "Item is drawn on the bottom layer of the stack",
+  top: "Item is drawn on the top layer of the stack (roofs, ceilings)",
+  fullbank: "Item occupies the full tile ground slot",
+  topeffect: "Item renders above creatures (tree tops, overhead arches)",
+  lying_object: "Item lies flat on the ground (books on floor, papers)",
+  translucent: "Item is rendered semi-transparent",
+  dont_hide: "Item is never hidden by the auto-hide logic for top items",
+  animate_always: "Animation plays continuously, not only when on-screen",
+  corpse: "Item is a creature corpse (lootable body)",
+  player_corpse: "Item is a player's dead body",
+  wearout: "Item degrades with use until it expires",
+  clockexpire: "Item expires after a real-time duration",
+  expire: "Item expires after a certain server tick count",
+  expirestop: "Expiration timer pauses when not in use",
+  reverse_addons_south: "Render addon sprites in reverse order facing south",
+  reverse_addons_east: "Render addon sprites in reverse order facing east",
+  reverse_addons_north: "Render addon sprites in reverse order facing north",
+  reverse_addons_west: "Render addon sprites in reverse order facing west",
+  weapon_type: "The weapon class (sword, axe, club, bow, etc.)",
+  minimum_level: "Minimum character level required to equip",
+  dual_wielding: "Item can be wielded in the off-hand simultaneously",
+  ammo: "Item is ammunition (arrows, bolts, throwing stars)",
+  restrict_to_vocation: "Restrict usage to specific vocations",
+  name: "Display name shown in-game on \"Look\"",
+  description: "Longer description shown in cyclopedia or inspect",
+  brightness: "Light radius intensity (0 = off, 10 = max)",
+  color: "Light color index from the Tibia palette (0–215)",
+  x: "Horizontal pixel offset for draw position",
+  y: "Vertical pixel offset for draw position",
+  elevation: "Visual height offset in pixels (makes items appear raised)",
+  slot: "Equipment slot number (head, body, legs, etc.)",
+  direction: "Which wall side the hook attaches to",
+  action: "Default action when player clicks this item",
+  category: "Market category for the trade/auction house",
+  trade_as_object_id: "Object ID used for trade matching in the market",
+  show_as_object_id: "Object ID whose sprite is shown in market listings",
+  slot_count: "Number of imbument slots available",
+  waypoints: "Pathfinding cost / waypoint weight for bank tiles",
+  max_text_length: "Max characters writable on this item",
+  max_text_length_once: "Max characters writable (one-time only, then read-only)",
+  former_object_typeid: "Object ID this item reverts to when it expires",
+  cyclopedia_type: "Cyclopedia classification type ID",
+  upgrade_classification: "Tier classification level (0–4) for forge upgrades",
+  gem_quality_id: "Skill wheel gem quality tier",
+  vocation_id: "Vocation ID the gem is locked to",
+  proficiency_id: "Proficiency skill identifier",
+};
+
 // ---- common controls ----
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2">
-      <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold">
+    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50 overflow-hidden">
+      <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
         {title}
       </h3>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">{children}</div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 px-4 py-3">{children}</div>
     </section>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const desc = FLAG_DESCRIPTIONS[label];
   return (
     <label className="flex items-center justify-between gap-2 text-sm">
-      <span className="text-atlas-ink-soft truncate">{label}</span>
+      <span className="flex items-center gap-1 text-atlas-ink-soft truncate">
+        {desc && (
+          <span className="relative shrink-0 flex group/tip">
+            <HelpCircle className="h-3.5 w-3.5 text-atlas-muted/60 hover:text-atlas-ink cursor-help" />
+            <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-30 w-max max-w-[220px] rounded bg-atlas-ink px-2 py-1 text-[11px] leading-tight text-atlas-cream shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity">
+              {desc}
+            </span>
+          </span>
+        )}
+        {label}
+      </span>
       <div className="flex-1 max-w-[160px]">{children}</div>
     </label>
   );
@@ -168,7 +252,7 @@ function VocationPicker({
   onCommit: (v: Vocation[]) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 justify-end">
+    <div className="flex gap-1.5">
       {VOCATIONS.map((voc) => {
         const isOn = value.includes(voc);
         return (
@@ -240,8 +324,8 @@ function CompositeSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-2">
-      <div className="flex items-center gap-2">
+    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
         <input
           type="checkbox"
           checked={present}
@@ -253,7 +337,7 @@ function CompositeSection({
         </h3>
       </div>
       {present && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pl-6">{children}</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 px-4 py-3">{children}</div>
       )}
     </section>
   );
@@ -343,7 +427,7 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <Section title={t("attr.section.identity")}>
         <Field label="name">
           <TextInput
@@ -414,14 +498,13 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
             onCommit={(v) => onUpdate("flags.ammo", v)}
           />
         </Field>
-        <div className="col-span-2">
-          <Field label="restrict_to_vocation">
-            <VocationPicker
-              value={flags.restrictToVocation}
-              onCommit={(v) => onUpdate("flags.restrict_to_vocation", v)}
-            />
-          </Field>
-        </div>
+        <label className="col-span-2 flex items-center gap-3 text-sm">
+          <span className="text-atlas-ink-soft shrink-0">restrict_to_vocation</span>
+          <VocationPicker
+            value={flags.restrictToVocation}
+            onCommit={(v) => onUpdate("flags.restrict_to_vocation", v)}
+          />
+        </label>
       </Section>
 
       <CompositeSection
@@ -903,11 +986,13 @@ export function AttributeEditor() {
           </div>
         )}
 
-        <section className="space-y-2">
-          <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold">
+        <section className="rounded-lg border border-atlas-border bg-atlas-paper/50 overflow-hidden">
+          <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
             {t("attr.section.sprites")}
           </h3>
-          <SpritePreview appearance={appearance} />
+          <div className="px-4 py-3">
+            <SpritePreview appearance={appearance} />
+          </div>
         </section>
 
         <AppearanceSection appearance={appearance} />

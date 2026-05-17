@@ -1524,6 +1524,40 @@ pub fn export_appearance(
     super::export::export_appearance(&atlas, &app, format, std::path::Path::new(&output_path))
 }
 
+/// Export all sprites of an appearance as individual PNGs into a
+/// directory. Each file is named `{sprite_id}.png`.
+#[tauri::command]
+pub fn export_appearance_sprites(
+    scope: AppearanceScope,
+    id: u32,
+    output_path: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<super::export::ExportReport, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let atlas = guard
+        .atlas
+        .clone()
+        .ok_or("assets dir is not set — open assets first")?;
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .ok_or("appearances.dat is not loaded")?;
+    let list: &[AppearanceInfo] = match scope {
+        AppearanceScope::Object => &appearances.objects,
+        AppearanceScope::Outfit => &appearances.outfits,
+        AppearanceScope::Effect => &appearances.effects,
+        AppearanceScope::Missile => &appearances.missiles,
+    };
+    let app = list
+        .iter()
+        .find(|a| a.id.0 == id)
+        .ok_or_else(|| format!("appearance id {id} not found in {scope:?}"))?
+        .clone();
+    drop(guard);
+    super::export::export_all_sprites(&atlas, &app, std::path::Path::new(&output_path))
+}
+
 #[tauri::command]
 pub fn list_sprite_ranges(
     state: State<'_, SharedWorkspace>,

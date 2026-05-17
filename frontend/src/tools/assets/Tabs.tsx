@@ -124,14 +124,16 @@ export function Tabs() {
           >
             <Icon className={cn("h-4 w-4 shrink-0", tab.iconClass)} />
             <span>{tab.label}</span>
-            <span
-              className={cn(
-                "ml-0.5 text-xs tabular-nums",
-                isActive ? "text-atlas-muted" : "text-atlas-muted/70",
-              )}
-            >
-              {count.toLocaleString()}
-            </span>
+            {count > 0 && (
+              <span
+                className={cn(
+                  "ml-0.5 text-xs tabular-nums",
+                  isActive ? "text-atlas-muted" : "text-atlas-muted/70",
+                )}
+              >
+                {count.toLocaleString()}
+              </span>
+            )}
           </button>
         );
       })}

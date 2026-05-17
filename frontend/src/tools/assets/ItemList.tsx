@@ -16,8 +16,8 @@ import {
 import { cn } from "../../shared/utils";
 import { useT } from "../../i18n";
 
-const ROW_HEIGHT = 48;
-const THUMB_SIZE = 36;
+const ROW_HEIGHT = 72;
+const THUMB_SIZE = 64;
 
 function matches(row: AppearanceRow, needle: string): boolean {
   if (!needle) return true;
@@ -338,7 +338,7 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
                     )}
                     title={`${row.spriteCount} sprite(s)`}
                   >
-                    {row.spriteCount}
+                    s{row.spriteCount}
                   </span>
                   </button>
                 </div>
