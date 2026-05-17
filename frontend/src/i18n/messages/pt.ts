@@ -155,6 +155,28 @@ export const pt: Record<MessageKey, string> = {
   "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
   "import.commit": "Importar",
 
+  "tools.title": "Ferramentas",
+
+  "duplicates.title": "Buscar duplicados",
+  "duplicates.none": "Nenhuma appearance duplicada nesta categoria.",
+  "duplicates.summary": "{groups} grupo(s), {total} appearance(s) no total",
+  "duplicates.groupCount": "{count} appearances compartilham os mesmos sprites",
+
+  "unmapped.title": "Relatório de itens não mapeados",
+  "unmapped.clean": "Todas as appearances e itens OTB estão devidamente mapeados.",
+  "unmapped.appearanceOrphans": "Appearances órfãs",
+  "unmapped.appearanceOrphansHint":
+    "Appearances sem item OTB correspondente (nenhum server_id mapeia para seu client_id).",
+  "unmapped.otbOrphans": "Itens OTB órfãos",
+  "unmapped.otbOrphansHint":
+    "Itens OTB cujo client_id não corresponde a nenhuma appearance.",
+  "unmapped.collisions": "Colisões",
+  "unmapped.collisionsHint":
+    "Appearances correspondidas por mais de um item OTB (mapeamento ambíguo de client_id).",
+
+  "copyPaste.copy": "Copiar appearance para clipboard",
+  "copyPaste.paste": "Colar appearance do clipboard",
+
   "profiles.title": "Perfis",
   "profiles.none": "Sem perfil",
   "profiles.empty": "Nenhum perfil salvo ainda.",

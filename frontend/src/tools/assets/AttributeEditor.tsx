@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, HelpCircle } from "lucide-react";
+import { Clipboard, ClipboardPaste, Download, HelpCircle } from "lucide-react";
 
 import { ExportDialog } from "./ExportDialog";
 import { useWorkspace } from "./store";
@@ -914,8 +914,11 @@ export function AttributeEditor() {
   const category = useWorkspace((s) => s.category);
   const appearance = useWorkspace((s) => s.selectedAppearance);
   const error = useWorkspace((s) => s.error);
+  const copyAppearanceJson = useWorkspace((s) => s.copyAppearanceJson);
+  const pasteAppearanceJson = useWorkspace((s) => s.pasteAppearanceJson);
   const t = useT();
   const [showExport, setShowExport] = useState(false);
+  const [clipboardJson, setClipboardJson] = useState<string | null>(null);
 
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
@@ -967,16 +970,43 @@ export function AttributeEditor() {
               {appearance.spriteIds.length} sprite(s)
             </p>
           </div>
-          {exportableCategory && appearance.spriteIds.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowExport(true)}
-              title={t("export.title")}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-atlas-border bg-atlas-paper text-sm text-atlas-ink hover:border-atlas-ink hover:bg-atlas-sand"
-            >
-              <Download className="h-4 w-4" />
-              {t("export.button")}
-            </button>
+          {exportableCategory && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const json = await copyAppearanceJson(exportableCategory, headerInfo!.id);
+                  if (json) setClipboardJson(json);
+                }}
+                title={t("copyPaste.copy")}
+                className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+              >
+                <Clipboard className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!clipboardJson) return;
+                  await pasteAppearanceJson(exportableCategory, headerInfo!.id, clipboardJson);
+                }}
+                disabled={!clipboardJson}
+                title={t("copyPaste.paste")}
+                className="rounded p-1.5 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ClipboardPaste className="h-4 w-4" />
+              </button>
+              {appearance.spriteIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowExport(true)}
+                  title={t("export.title")}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-atlas-border bg-atlas-paper text-sm text-atlas-ink hover:border-atlas-ink hover:bg-atlas-sand"
+                >
+                  <Download className="h-4 w-4" />
+                  {t("export.button")}
+                </button>
+              )}
+            </div>
           )}
         </header>
 

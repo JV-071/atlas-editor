@@ -35,10 +35,12 @@ export interface SpriteRangeDto {
 
 export interface WorkspaceSummary {
   appearancesPath: string | null;
+  otbPath: string | null;
   objectCount: number;
   outfitCount: number;
   effectCount: number;
   missileCount: number;
+  otbItemCount: number;
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -112,10 +114,12 @@ export interface RecentFiles {
 
 export const emptySummary: WorkspaceSummary = {
   appearancesPath: null,
+  otbPath: null,
   objectCount: 0,
   outfitCount: 0,
   effectCount: 0,
   missileCount: 0,
+  otbItemCount: 0,
   dirty: false,
   canUndo: false,
   canRedo: false,
@@ -481,6 +485,19 @@ export function defaultExportFormat(category: AppearanceCategory): ExportFormat 
 export interface ExportReport {
   format: ExportFormat;
   files: string[];
+}
+
+export interface DuplicateGroup {
+  spriteKey: string;
+  ids: number[];
+  category: string;
+  displaySpriteIds: number[];
+}
+
+export interface UnmappedReport {
+  appearanceOrphanIds: number[];
+  otbOrphanServerIds: number[];
+  collisionIds: number[];
 }
 
 /// A named bundle bookmark: assets dir + the pixel format that decodes

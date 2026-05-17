@@ -37,12 +37,14 @@ import {
   type AssetsBundleResult,
   type AssetsDirInfo,
   type Category,
+  type DuplicateGroup,
   type ExportFormat,
   type ExportReport,
   type PixelFormat,
   type Profile,
   type RecentFiles,
   type SpriteRangeDto,
+  type UnmappedReport,
   type WorkspaceSummary,
 } from "./types";
 
@@ -154,6 +156,11 @@ interface WorkspaceState {
   refreshPixelFormat: () => Promise<void>;
 
   createAppearance: (category: AppearanceCategory) => Promise<void>;
+
+  copyAppearanceJson: (category: AppearanceCategory, id: number) => Promise<string | null>;
+  pasteAppearanceJson: (category: AppearanceCategory, targetId: number, json: string) => Promise<void>;
+  findDuplicates: (category: AppearanceCategory) => Promise<DuplicateGroup[]>;
+  getUnmappedReport: () => Promise<UnmappedReport | null>;
 
   toggleExportQueueEntry: (category: AppearanceCategory, id: number) => void;
   enqueueAllCategory: (category: AppearanceCategory) => void;
@@ -604,6 +611,51 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().refreshSpriteRanges();
       set({ spriteCacheBust: get().spriteCacheBust + 1, error: null });
       return firstSpriteId;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
+    }
+  },
+
+  async copyAppearanceJson(category, id) {
+    try {
+      const json = await invoke<string>("copy_appearance_json", { scope: category, id });
+      return json;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
+    }
+  },
+
+  async pasteAppearanceJson(category, targetId, json) {
+    try {
+      const summary = await invoke<WorkspaceSummary>("paste_appearance_json", {
+        scope: category,
+        targetId,
+        json,
+      });
+      set({ summary, error: null });
+      await Promise.all([
+        get().refreshCategoryRows(category),
+        get().refreshSelectedDetails(),
+      ]);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async findDuplicates(category) {
+    try {
+      return await invoke<DuplicateGroup[]>("find_duplicates", { scope: category });
+    } catch (e) {
+      set({ error: String(e) });
+      return [];
+    }
+  },
+
+  async getUnmappedReport() {
+    try {
+      return await invoke<UnmappedReport>("get_unmapped_report");
     } catch (e) {
       set({ error: String(e) });
       return null;

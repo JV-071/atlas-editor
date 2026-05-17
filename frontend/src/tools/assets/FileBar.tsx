@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { FileDown, Home, MoreHorizontal, Redo2, Save, Search, Undo2, X } from "lucide-react";
+import { AlertTriangle, Copy, FileDown, Home, MoreHorizontal, Redo2, Save, Search, Undo2, X } from "lucide-react";
 
 import logoUrl from "../../shared/logo.png";
 import { useWorkspace } from "./store";
 import { cn } from "../../shared/utils";
+import { DuplicateDialog } from "./DuplicateDialog";
 import { ExportQueueButton } from "./ExportQueueButton";
 import { ProfileSwitcher } from "./ProfileSwitcher";
 import { SearchDialog } from "./SearchDialog";
 import { ImportDialog } from "./ImportDialog";
+import { UnmappedDialog } from "./UnmappedDialog";
 import { useT } from "../../i18n";
 
 function basename(path: string | null): string | null {
@@ -22,11 +24,17 @@ function basename(path: string | null): string | null {
 /// handles every known client format, but a future Cipsoft refresh
 /// could break that and we'd want a quick override).
 function OverflowMenu() {
+  const t = useT();
   const [open, setOpen] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [showUnmapped, setShowUnmapped] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const assetsDir = useWorkspace((s) => s.assetsDir);
+  const summary = useWorkspace((s) => s.summary);
   const pixelFormat = useWorkspace((s) => s.pixelFormat);
   const cyclePixelFormat = useWorkspace((s) => s.cyclePixelFormat);
+
+  const hasOtb = summary.otbPath != null;
 
   useEffect(() => {
     if (!open) return;
@@ -51,6 +59,38 @@ function OverflowMenu() {
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 w-64 z-10 rounded border border-atlas-border bg-atlas-paper shadow-lg p-2 text-sm">
+          {summary.appearancesPath && (
+            <>
+              <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-atlas-muted font-semibold">
+                {t("tools.title")}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setShowDuplicates(true);
+                }}
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 hover:bg-atlas-sand"
+              >
+                <Copy className="h-3.5 w-3.5 text-atlas-muted" />
+                <span className="text-atlas-ink-soft">{t("duplicates.title")}</span>
+              </button>
+              {hasOtb && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setShowUnmapped(true);
+                  }}
+                  className="w-full flex items-center gap-2 rounded px-2 py-1.5 hover:bg-atlas-sand"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 text-atlas-muted" />
+                  <span className="text-atlas-ink-soft">{t("unmapped.title")}</span>
+                </button>
+              )}
+              <div className="my-1 border-t border-atlas-border" />
+            </>
+          )}
           <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-atlas-muted font-semibold">
             Debug
           </div>
@@ -67,6 +107,8 @@ function OverflowMenu() {
           </button>
         </div>
       )}
+      {showDuplicates && <DuplicateDialog onClose={() => setShowDuplicates(false)} />}
+      {showUnmapped && <UnmappedDialog onClose={() => setShowUnmapped(false)} />}
     </div>
   );
 }

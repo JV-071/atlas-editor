@@ -1857,3 +1857,187 @@ pub fn get_sprite_png(
         .map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new((*bytes).clone()))
 }
+
+// ── Duplicate detection ────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateGroup {
+    pub sprite_key: String,
+    pub ids: Vec<u32>,
+    pub category: String,
+    pub display_sprite_ids: Vec<u32>,
+}
+
+#[tauri::command]
+pub fn find_duplicates(
+    scope: AppearanceScope,
+    state: State<'_, SharedWorkspace>,
+) -> Result<Vec<DuplicateGroup>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .ok_or("appearances.dat is not loaded")?;
+    let list = appearance_list(appearances, scope);
+
+    let mut groups: std::collections::HashMap<Vec<u32>, Vec<u32>> =
+        std::collections::HashMap::new();
+    for entry in list {
+        if entry.sprite_ids.is_empty() {
+            continue;
+        }
+        groups
+            .entry(entry.sprite_ids.clone())
+            .or_default()
+            .push(entry.id.0);
+    }
+
+    let cat_name = match scope {
+        AppearanceScope::Object => "object",
+        AppearanceScope::Outfit => "outfit",
+        AppearanceScope::Effect => "effect",
+        AppearanceScope::Missile => "missile",
+    };
+
+    let mut result: Vec<DuplicateGroup> = groups
+        .into_iter()
+        .filter(|(_, ids)| ids.len() > 1)
+        .map(|(sprites, ids)| {
+            let display: Vec<u32> = sprites.iter().copied().take(8).collect();
+            let key = sprites
+                .iter()
+                .take(4)
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            DuplicateGroup {
+                sprite_key: key,
+                ids,
+                category: cat_name.to_string(),
+                display_sprite_ids: display,
+            }
+        })
+        .collect();
+    result.sort_by(|a, b| b.ids.len().cmp(&a.ids.len()));
+    Ok(result)
+}
+
+// ── Unmapped items ─────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmappedReport {
+    pub appearance_orphan_ids: Vec<u32>,
+    pub otb_orphan_server_ids: Vec<u16>,
+    pub collision_ids: Vec<u32>,
+}
+
+#[tauri::command]
+pub fn get_unmapped_report(
+    state: State<'_, SharedWorkspace>,
+) -> Result<UnmappedReport, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .ok_or("appearances.dat is not loaded")?;
+    let otb = guard
+        .workspace
+        .otb
+        .as_ref()
+        .ok_or("items.otb is not loaded")?;
+
+    let xref = CrossRef::build(appearances, otb);
+
+    let appearance_orphan_ids: Vec<u32> = xref
+        .appearance_orphans()
+        .iter()
+        .filter_map(|&idx| appearances.objects.get(idx).map(|a| a.id.0))
+        .collect();
+
+    let otb_orphan_server_ids: Vec<u16> = xref
+        .otb_orphans()
+        .iter()
+        .filter_map(|&idx| otb.items.get(idx).and_then(|i| i.server_id))
+        .collect();
+
+    let collision_ids: Vec<u32> = xref
+        .collisions()
+        .iter()
+        .filter_map(|&idx| appearances.objects.get(idx).map(|a| a.id.0))
+        .collect();
+
+    Ok(UnmappedReport {
+        appearance_orphan_ids,
+        otb_orphan_server_ids,
+        collision_ids,
+    })
+}
+
+// ── Copy appearance to clipboard (JSON) ────────────────────────────
+
+#[tauri::command]
+pub fn copy_appearance_json(
+    scope: AppearanceScope,
+    id: u32,
+    state: State<'_, SharedWorkspace>,
+) -> Result<String, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_ref()
+        .ok_or("appearances.dat is not loaded")?;
+    let list = appearance_list(appearances, scope);
+    let entry = list
+        .iter()
+        .find(|a| a.id.0 == id)
+        .ok_or_else(|| format!("appearance {id} not found"))?;
+    serde_json::to_string_pretty(entry).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn paste_appearance_json(
+    scope: AppearanceScope,
+    target_id: u32,
+    json: String,
+    state: State<'_, SharedWorkspace>,
+) -> Result<WorkspaceSummary, String> {
+    let source: AppearanceInfo =
+        serde_json::from_str(&json).map_err(|e| format!("invalid JSON: {e}"))?;
+
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+
+    let entry = snapshot_entity(
+        &guard.workspace,
+        Entity::Appearance {
+            scope,
+            id: target_id,
+        },
+    );
+
+    let appearances = guard
+        .workspace
+        .appearances
+        .as_mut()
+        .ok_or("appearances.dat is not loaded")?;
+    let list = appearance_list_mut(appearances, scope);
+    let target = list
+        .iter_mut()
+        .find(|a| a.id.0 == target_id)
+        .ok_or_else(|| format!("target appearance {target_id} not found"))?;
+
+    target.name = source.name;
+    target.description = source.description;
+    target.flags = source.flags;
+    target.frame_groups = source.frame_groups;
+    target.sprite_ids = source.sprite_ids;
+
+    push_history(&mut guard.history, entry);
+    guard.future.clear();
+    guard.dirty = true;
+    Ok(guard.summary())
+}

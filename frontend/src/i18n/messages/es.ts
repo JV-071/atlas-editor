@@ -155,6 +155,28 @@ export const es: Record<MessageKey, string> = {
   "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
   "import.commit": "Importar",
 
+  "tools.title": "Herramientas",
+
+  "duplicates.title": "Buscar duplicados",
+  "duplicates.none": "No se encontraron appearances duplicadas en esta categoría.",
+  "duplicates.summary": "{groups} grupo(s), {total} appearance(s) en total",
+  "duplicates.groupCount": "{count} appearances comparten los mismos sprites",
+
+  "unmapped.title": "Reporte de ítems sin mapear",
+  "unmapped.clean": "Todas las appearances y los ítems OTB están correctamente mapeados.",
+  "unmapped.appearanceOrphans": "Appearances huérfanas",
+  "unmapped.appearanceOrphansHint":
+    "Appearances sin ítem OTB correspondiente (ningún server_id mapea a su client_id).",
+  "unmapped.otbOrphans": "Ítems OTB huérfanos",
+  "unmapped.otbOrphansHint":
+    "Ítems OTB cuyo client_id no corresponde a ninguna appearance.",
+  "unmapped.collisions": "Colisiones",
+  "unmapped.collisionsHint":
+    "Appearances correspondidas por más de un ítem OTB (mapeo ambiguo de client_id).",
+
+  "copyPaste.copy": "Copiar appearance al portapapeles",
+  "copyPaste.paste": "Pegar appearance del portapapeles",
+
   "profiles.title": "Perfiles",
   "profiles.none": "Sin perfil",
   "profiles.empty": "Aún no hay perfiles guardados.",

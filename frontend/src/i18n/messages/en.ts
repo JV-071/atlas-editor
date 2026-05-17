@@ -158,6 +158,28 @@ export const en = {
   "import.summary": "{groups} frame group(s) · {sprites} sprite(s)",
   "import.commit": "Import",
 
+  "tools.title": "Tools",
+
+  "duplicates.title": "Find duplicates",
+  "duplicates.none": "No duplicate appearances found in this category.",
+  "duplicates.summary": "{groups} group(s), {total} appearance(s) total",
+  "duplicates.groupCount": "{count} appearances share the same sprites",
+
+  "unmapped.title": "Unmapped items report",
+  "unmapped.clean": "All appearances and OTB items are properly mapped.",
+  "unmapped.appearanceOrphans": "Appearance orphans",
+  "unmapped.appearanceOrphansHint":
+    "Appearances with no matching OTB item (no server_id maps to their client_id).",
+  "unmapped.otbOrphans": "OTB orphans",
+  "unmapped.otbOrphansHint":
+    "OTB items whose client_id does not match any appearance object.",
+  "unmapped.collisions": "Collisions",
+  "unmapped.collisionsHint":
+    "Appearances matched by more than one OTB item (ambiguous client_id mapping).",
+
+  "copyPaste.copy": "Copy appearance to clipboard",
+  "copyPaste.paste": "Paste appearance from clipboard",
+
   "profiles.title": "Profiles",
   "profiles.none": "No profile",
   "profiles.empty": "No saved profiles yet.",
