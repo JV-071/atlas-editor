@@ -49,6 +49,11 @@ export const en = {
 
   "list.searchPlaceholder": "Filter by id or name…",
   "list.newObject": "Create new object appearance",
+  "list.newOutfit": "Create new outfit appearance",
+  "list.newEffect": "Create new effect appearance",
+  "list.newMissile": "Create new missile appearance",
+  "list.viewGrid": "Grid view",
+  "list.viewList": "List view",
   "list.filter": "Flag filter",
   "list.filter.clear": "Clear",
 

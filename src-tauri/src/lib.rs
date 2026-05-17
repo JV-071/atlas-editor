@@ -67,7 +67,7 @@ pub fn run() {
             assets::commands::set_sprite_pixel_format,
             assets::commands::get_sprite_pixel_format,
             assets::commands::inspect_sprite,
-            assets::commands::create_object_appearance,
+            assets::commands::create_appearance,
             assets::commands::create_otb_item,
             assets::commands::export_appearance,
             assets::commands::export_appearance_sprites,

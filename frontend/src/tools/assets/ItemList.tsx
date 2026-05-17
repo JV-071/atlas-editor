@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CheckSquare, Filter, Plus, Search, Square, X } from "lucide-react";
+import { CheckSquare, Filter, Grid3X3, List, Plus, Search, Square, X } from "lucide-react";
 
 import { SheetEditor } from "./SheetEditor";
 import { SpriteGrid } from "./SpriteGrid";
@@ -18,6 +18,7 @@ import { useT } from "../../i18n";
 
 const ROW_HEIGHT = 72;
 const THUMB_SIZE = 64;
+const GRID_CELL_SIZE = 72;
 
 function matches(row: AppearanceRow, needle: string): boolean {
   if (!needle) return true;
@@ -163,13 +164,13 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
   const setQuery = useWorkspace((s) => s.setQuery);
   const selectedId = useWorkspace((s) => s.selectedId);
   const setSelected = useWorkspace((s) => s.setSelected);
-  const createObjectAppearance = useWorkspace((s) => s.createObjectAppearance);
+  const createAppearance = useWorkspace((s) => s.createAppearance);
   const exportQueue = useWorkspace((s) => s.exportQueue);
   const toggleExportQueueEntry = useWorkspace((s) => s.toggleExportQueueEntry);
   const t = useT();
 
-  // Flag filter is per-category — switching tabs shouldn't drag the
-  // previous tab's flag selection along.
+  const [gridView, setGridView] = useState(false);
+
   const [flagsMaskByCategory, setFlagsMaskByCategory] = useState<
     Record<AppearanceCategory, number>
   >({ object: 0, outfit: 0, effect: 0, missile: 0 });
@@ -188,12 +189,13 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
   }, [rows, query, requiredMask]);
 
   const parentRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
-    count: filtered.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 16,
-  });
+
+  const newAppearanceLabel: Record<AppearanceCategory, string> = {
+    object: t("list.newObject"),
+    outfit: t("list.newOutfit"),
+    effect: t("list.newEffect"),
+    missile: t("list.newMissile"),
+  };
 
   return (
     <div className="flex flex-col h-full border-r border-atlas-border bg-atlas-paper">
@@ -210,12 +212,20 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
           {filtered.length.toLocaleString()}
           {filtered.length !== rows.length && <> / {rows.length.toLocaleString()}</>}
         </span>
+        <button
+          type="button"
+          onClick={() => setGridView((v) => !v)}
+          title={gridView ? t("list.viewList") : t("list.viewGrid")}
+          className="rounded p-1 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
+        >
+          {gridView ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
+        </button>
         <FlagFilter requiredMask={requiredMask} setRequiredMask={setRequiredMask} />
-        {category === "object" && appearancesLoaded && (
+        {appearancesLoaded && (
           <button
             type="button"
-            onClick={() => void createObjectAppearance()}
-            title={t("list.newObject")}
+            onClick={() => void createAppearance(category)}
+            title={newAppearanceLabel[category]}
             className="rounded p-1 text-atlas-muted hover:text-atlas-ink hover:bg-atlas-sand"
           >
             <Plus className="h-4 w-4" />
@@ -229,124 +239,279 @@ function AppearanceList({ category }: { category: AppearanceCategory }) {
             ? "No assets loaded. Go back to the launcher to open a bundle."
             : `No ${category}s in this file.`}
         </div>
+      ) : gridView ? (
+        <AppearanceGrid
+          rows={filtered}
+          category={category}
+          selectedId={selectedId}
+          setSelected={setSelected}
+          parentRef={parentRef}
+        />
       ) : (
-        <div ref={parentRef} className="flex-1 overflow-auto">
-          <div
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              position: "relative",
-              width: "100%",
-            }}
-          >
-            {virtualizer.getVirtualItems().map((vrow) => {
-              const row = filtered[vrow.index];
-              const selected = row.id === selectedId;
-              const queued = exportQueue.has(queueKey(category, row.id));
-              const canQueue = row.displaySpriteIds.length > 0;
-              return (
+        <AppearanceListView
+          rows={filtered}
+          category={category}
+          selectedId={selectedId}
+          setSelected={setSelected}
+          exportQueue={exportQueue}
+          toggleExportQueueEntry={toggleExportQueueEntry}
+          parentRef={parentRef}
+        />
+      )}
+    </div>
+  );
+}
+
+function AppearanceListView({
+  rows,
+  category,
+  selectedId,
+  setSelected,
+  exportQueue,
+  toggleExportQueueEntry,
+  parentRef,
+}: {
+  rows: AppearanceRow[];
+  category: AppearanceCategory;
+  selectedId: number | null;
+  setSelected: (id: number | null) => Promise<void>;
+  exportQueue: Map<string, { category: AppearanceCategory; id: number }>;
+  toggleExportQueueEntry: (category: AppearanceCategory, id: number) => void;
+  parentRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const t = useT();
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 16,
+  });
+
+  return (
+    <div ref={parentRef as React.RefObject<HTMLDivElement>} className="flex-1 overflow-auto">
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          position: "relative",
+          width: "100%",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((vrow) => {
+          const row = rows[vrow.index];
+          const selected = row.id === selectedId;
+          const queued = exportQueue.has(queueKey(category, row.id));
+          const canQueue = row.displaySpriteIds.length > 0;
+          return (
+            <div
+              key={row.id}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: `${vrow.size}px`,
+                transform: `translateY(${vrow.start}px)`,
+              }}
+              className={cn(
+                "flex items-center gap-2 px-2 text-left text-sm transition-colors group",
+                "hover:bg-atlas-sand",
+                selected
+                  ? "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink"
+                  : "text-atlas-ink",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => canQueue && toggleExportQueueEntry(category, row.id)}
+                disabled={!canQueue}
+                title={
+                  queued ? t("queue.removeFromQueue") : t("queue.addToQueue")
+                }
+                className={cn(
+                  "shrink-0 rounded p-0.5 transition-opacity",
+                  queued
+                    ? "opacity-100"
+                    : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+                  selected
+                    ? queued
+                      ? "text-atlas-cream"
+                      : "text-atlas-cream/70 hover:text-atlas-cream"
+                    : queued
+                      ? "text-emerald-700"
+                      : "text-atlas-muted hover:text-atlas-ink",
+                  "disabled:opacity-0 disabled:cursor-not-allowed",
+                )}
+              >
+                {queued ? (
+                  <CheckSquare className="h-3.5 w-3.5" />
+                ) : (
+                  <Square className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setSelected(row.id)}
+                className="flex flex-1 items-center gap-2 min-w-0 text-left"
+              >
+              <span
+                className={cn(
+                  "w-12 shrink-0 text-right font-mono text-xs tabular-nums",
+                  selected ? "text-atlas-cream/80" : "text-atlas-muted",
+                )}
+              >
+                {row.id}
+              </span>
+              {row.displaySpriteIds.length > 0 ? (
+                <SpriteThumb
+                  ids={row.displaySpriteIds}
+                  durationsMs={row.displayDurationsMs}
+                  size={THUMB_SIZE}
+                />
+              ) : (
                 <div
-                  key={row.id}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: `${vrow.size}px`,
-                    transform: `translateY(${vrow.start}px)`,
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-2 text-left text-sm transition-colors group",
-                    "hover:bg-atlas-sand",
-                    selected
-                      ? "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink"
-                      : "text-atlas-ink",
-                  )}
-                >
+                  style={{ width: THUMB_SIZE, height: THUMB_SIZE }}
+                  className="shrink-0"
+                />
+              )}
+              <span className="flex-1 truncate">
+                {category === "object" ? (
+                  row.name ?? (
+                    <span
+                      className={cn(
+                        "italic",
+                        selected ? "text-atlas-cream/70" : "text-atlas-muted",
+                      )}
+                    >
+                      (unnamed)
+                    </span>
+                  )
+                ) : (
+                  row.name
+                )}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 text-xs tabular-nums",
+                  selected ? "text-atlas-cream/70" : "text-atlas-muted",
+                )}
+                title={`${row.spriteCount} sprite(s)`}
+              >
+                s{row.spriteCount}
+              </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AppearanceGrid({
+  rows,
+  selectedId,
+  setSelected,
+  parentRef,
+}: {
+  rows: AppearanceRow[];
+  category: AppearanceCategory;
+  selectedId: number | null;
+  setSelected: (id: number | null) => Promise<void>;
+  parentRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(4);
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 300;
+      setCols(Math.max(2, Math.floor(w / GRID_CELL_SIZE)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [parentRef]);
+
+  const rowCount = Math.ceil(rows.length / cols);
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => GRID_CELL_SIZE,
+    overscan: 8,
+  });
+
+  return (
+    <div ref={parentRef as React.RefObject<HTMLDivElement>} className="flex-1 overflow-auto">
+      <div
+        ref={containerRef}
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          position: "relative",
+          width: "100%",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((vrow) => {
+          const startIdx = vrow.index * cols;
+          return (
+            <div
+              key={vrow.index}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: `${vrow.size}px`,
+                transform: `translateY(${vrow.start}px)`,
+              }}
+              className="flex"
+            >
+              {Array.from({ length: cols }, (_, ci) => {
+                const row = rows[startIdx + ci];
+                if (!row) return <div key={ci} style={{ width: GRID_CELL_SIZE, height: GRID_CELL_SIZE }} />;
+                const selected = row.id === selectedId;
+                return (
                   <button
-                    type="button"
-                    onClick={() => canQueue && toggleExportQueueEntry(category, row.id)}
-                    disabled={!canQueue}
-                    title={
-                      queued ? t("queue.removeFromQueue") : t("queue.addToQueue")
-                    }
-                    className={cn(
-                      "shrink-0 rounded p-0.5 transition-opacity",
-                      queued
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100 focus:opacity-100",
-                      selected
-                        ? queued
-                          ? "text-atlas-cream"
-                          : "text-atlas-cream/70 hover:text-atlas-cream"
-                        : queued
-                          ? "text-emerald-700"
-                          : "text-atlas-muted hover:text-atlas-ink",
-                      "disabled:opacity-0 disabled:cursor-not-allowed",
-                    )}
-                  >
-                    {queued ? (
-                      <CheckSquare className="h-3.5 w-3.5" />
-                    ) : (
-                      <Square className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                  <button
+                    key={row.id}
                     type="button"
                     onClick={() => void setSelected(row.id)}
-                    className="flex flex-1 items-center gap-2 min-w-0 text-left"
-                  >
-                  <span
+                    title={`#${row.id}${row.name ? ` — ${row.name}` : ""}`}
+                    style={{ width: GRID_CELL_SIZE, height: GRID_CELL_SIZE }}
                     className={cn(
-                      "w-12 shrink-0 text-right font-mono text-xs tabular-nums",
-                      selected ? "text-atlas-cream/80" : "text-atlas-muted",
+                      "flex flex-col items-center justify-center p-0.5 rounded transition-colors",
+                      "hover:bg-atlas-sand",
+                      selected
+                        ? "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink ring-1 ring-atlas-ink"
+                        : "text-atlas-ink",
                     )}
                   >
-                    {row.id}
-                  </span>
-                  {row.displaySpriteIds.length > 0 ? (
-                    <SpriteThumb
-                      ids={row.displaySpriteIds}
-                      durationsMs={row.displayDurationsMs}
-                      size={THUMB_SIZE}
-                    />
-                  ) : (
-                    <div
-                      style={{ width: THUMB_SIZE, height: THUMB_SIZE }}
-                      className="shrink-0"
-                    />
-                  )}
-                  <span className="flex-1 truncate">
-                    {category === "object" ? (
-                      row.name ?? (
-                        <span
-                          className={cn(
-                            "italic",
-                            selected ? "text-atlas-cream/70" : "text-atlas-muted",
-                          )}
-                        >
-                          (unnamed)
-                        </span>
-                      )
+                    {row.displaySpriteIds.length > 0 ? (
+                      <SpriteThumb
+                        ids={row.displaySpriteIds}
+                        durationsMs={row.displayDurationsMs}
+                        size={THUMB_SIZE}
+                      />
                     ) : (
-                      row.name
+                      <div
+                        style={{ width: THUMB_SIZE, height: THUMB_SIZE }}
+                        className="bg-atlas-sand/50 rounded"
+                      />
                     )}
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs tabular-nums",
-                      selected ? "text-atlas-cream/70" : "text-atlas-muted",
-                    )}
-                    title={`${row.spriteCount} sprite(s)`}
-                  >
-                    s{row.spriteCount}
-                  </span>
+                    <span
+                      className={cn(
+                        "text-[9px] font-mono tabular-nums leading-none mt-0.5",
+                        selected ? "text-atlas-cream/80" : "text-atlas-muted",
+                      )}
+                    >
+                      {row.id}
+                    </span>
                   </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

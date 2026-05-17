@@ -46,6 +46,11 @@ export const es: Record<MessageKey, string> = {
 
   "list.searchPlaceholder": "Filtrar por id o nombre…",
   "list.newObject": "Crear nuevo object appearance",
+  "list.newOutfit": "Crear nuevo outfit appearance",
+  "list.newEffect": "Crear nuevo effect appearance",
+  "list.newMissile": "Crear nuevo missile appearance",
+  "list.viewGrid": "Vista en cuadrícula",
+  "list.viewList": "Vista en lista",
   "list.filter": "Filtro de flags",
   "list.filter.clear": "Limpiar",
 

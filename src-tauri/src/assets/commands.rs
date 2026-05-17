@@ -824,11 +824,14 @@ pub fn save_appearances(state: State<'_, SharedWorkspace>) -> Result<WorkspaceSu
     Ok(guard.summary())
 }
 
-/// Append a brand-new object appearance with the next free id and
-/// return its id. Auto-snapshots for undo. Frontend should select the
-/// new id to drop the user into the attribute editor.
+/// Append a brand-new appearance with the next free id in the given
+/// category and return its id. Auto-snapshots for undo. Frontend
+/// should select the new id to drop the user into the attribute editor.
 #[tauri::command]
-pub fn create_object_appearance(state: State<'_, SharedWorkspace>) -> Result<NewItemInfo, String> {
+pub fn create_appearance(
+    scope: AppearanceScope,
+    state: State<'_, SharedWorkspace>,
+) -> Result<NewItemInfo, String> {
     let mut guard = state.lock().map_err(|e| e.to_string())?;
     let next_id = {
         let appearances = guard
@@ -836,8 +839,7 @@ pub fn create_object_appearance(state: State<'_, SharedWorkspace>) -> Result<New
             .appearances
             .as_ref()
             .ok_or("appearances.dat is not loaded")?;
-        appearances
-            .objects
+        appearance_list(appearances, scope)
             .iter()
             .map(|a| a.id.0)
             .max()
@@ -847,23 +849,27 @@ pub fn create_object_appearance(state: State<'_, SharedWorkspace>) -> Result<New
     if next_id == u32::MAX {
         return Err("appearance id space exhausted".into());
     }
-    // Entity is absent right now → snapshot captures `before = None`,
-    // so undoing this create removes the appearance again.
     let entry = snapshot_entity(
         &guard.workspace,
         Entity::Appearance {
-            scope: AppearanceScope::Object,
+            scope,
             id: next_id,
         },
     );
+    let category = match scope {
+        AppearanceScope::Object => atlas_core::AppearanceCategory::Object,
+        AppearanceScope::Outfit => atlas_core::AppearanceCategory::Outfit,
+        AppearanceScope::Effect => atlas_core::AppearanceCategory::Effect,
+        AppearanceScope::Missile => atlas_core::AppearanceCategory::Missile,
+    };
     let appearances = guard
         .workspace
         .appearances
         .as_mut()
         .ok_or("appearances.dat is not loaded")?;
-    appearances.objects.push(atlas_appearances::AppearanceInfo {
+    appearance_list_mut(appearances, scope).push(atlas_appearances::AppearanceInfo {
         id: atlas_appearances::AssetId(next_id),
-        category: atlas_core::AppearanceCategory::Object,
+        category,
         ..Default::default()
     });
     push_history(&mut guard.history, entry);

@@ -153,7 +153,7 @@ interface WorkspaceState {
   cyclePixelFormat: () => Promise<void>;
   refreshPixelFormat: () => Promise<void>;
 
-  createObjectAppearance: () => Promise<void>;
+  createAppearance: (category: AppearanceCategory) => Promise<void>;
 
   toggleExportQueueEntry: (category: AppearanceCategory, id: number) => void;
   enqueueAllCategory: (category: AppearanceCategory) => void;
@@ -549,13 +549,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  async createObjectAppearance() {
+  async createAppearance(category) {
     try {
-      const info = await invoke<{ appearanceId: number }>("create_object_appearance");
+      const info = await invoke<{ appearanceId: number }>("create_appearance", {
+        scope: category,
+      });
       const summary = await invoke<WorkspaceSummary>("get_workspace_summary");
-      set({ summary, category: "object" });
-      // Create is Object-scoped — one category list, not all four.
-      await get().refreshCategoryRows("object");
+      set({ summary, category });
+      await get().refreshCategoryRows(category);
       await get().setSelected(info.appearanceId);
     } catch (e) {
       set({ error: String(e) });
