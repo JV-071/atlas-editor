@@ -18,7 +18,7 @@ import { useT } from "../../i18n";
 
 const ROW_HEIGHT = 72;
 const THUMB_SIZE = 64;
-const GRID_CELL_SIZE = 72;
+const GRID_CELL_SIZE = 84;
 
 function matches(row: AppearanceRow, needle: string): boolean {
   if (!needle) return true;
@@ -478,7 +478,7 @@ function AppearanceGrid({
                     title={`#${row.id}${row.name ? ` — ${row.name}` : ""}`}
                     style={{ width: GRID_CELL_SIZE, height: GRID_CELL_SIZE }}
                     className={cn(
-                      "flex flex-col items-center justify-center p-0.5 rounded transition-colors",
+                      "flex flex-col items-center justify-center p-1 rounded transition-colors",
                       "hover:bg-atlas-sand",
                       selected
                         ? "bg-atlas-ink text-atlas-cream hover:bg-atlas-ink ring-1 ring-atlas-ink"
@@ -499,7 +499,7 @@ function AppearanceGrid({
                     )}
                     <span
                       className={cn(
-                        "text-[9px] font-mono tabular-nums leading-none mt-0.5",
+                        "text-[10px] font-mono tabular-nums leading-none mt-1",
                         selected ? "text-atlas-cream/80" : "text-atlas-muted",
                       )}
                     >
