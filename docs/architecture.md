@@ -79,9 +79,11 @@ When a workspace contains both:
 Atlas extends OTB with attribute bytes `0x80+` so modern client fields
 (imbuements, gems, vocation restrictions, weapon type, …) round-trip
 through the legacy format. The byte assignments are stable and
-specified in [otb-format.md](otb-format.md); any server can adopt
-them. Classic TFS servers skip them via the standard
-"unknown attribute" branch, so the format stays backwards-compatible.
+specified in [otb-format.md](otb-format.md); the companion
+[**atlas**](https://github.com/atlas-kit/atlas) OT server adopts them,
+and any other TFS-derived server can do the same — classic TFS skips
+them via the standard "unknown attribute" branch, so the format stays
+backwards-compatible.
 
 ## State management
 

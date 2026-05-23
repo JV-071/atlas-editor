@@ -2,8 +2,9 @@
 
 This document specifies the **Atlas-extended `items.otb` format**. It is
 the source of truth for both the `atlas-otb` crate (used by this editor)
-and any server implementation (e.g. `atlas-server`) that wants to consume
-OTBs written by Atlas Assets Editor.
+and any server implementation that wants to consume OTBs written by
+Atlas Assets Editor — for example, the companion
+[**atlas**](https://github.com/atlas-kit/atlas) OT server.
 
 The document is intentionally license-neutral: it describes facts (byte
 values, layouts) and may be freely re-implemented from scratch in any
