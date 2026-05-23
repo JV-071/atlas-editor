@@ -30,6 +30,7 @@ const TILE_BYTES: usize = (TILE * TILE * 4) as usize; // 4096, ARGB
 
 /// One decoded frame group: the pattern dims plus the composed sprite
 /// tiles (already stitched up from the raw 32×32 ARGB tiles).
+#[derive(Debug)]
 pub struct ObdFrameGroup {
     pub fixed_frame_group: Option<FixedFrameGroup>,
     pub pattern_width: u32,
@@ -44,6 +45,7 @@ pub struct ObdFrameGroup {
     pub tile_h: u32,
 }
 
+#[derive(Debug)]
 pub struct ObdImport {
     pub category: AppearanceCategory,
     pub frame_groups: Vec<ObdFrameGroup>,
@@ -346,5 +348,190 @@ pub fn build_appearance(
         flags: Default::default(),
         frame_groups,
         sprite_ids: flat,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reader_u8_u16_u32() {
+        let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+        let mut r = Reader::new(&data);
+        assert_eq!(r.u8().unwrap(), 0x01);
+        assert_eq!(r.u16().unwrap(), 0x0302);
+        assert_eq!(r.u32().unwrap(), 0x07060504);
+    }
+
+    #[test]
+    fn reader_rejects_read_past_end() {
+        let data = [0x01, 0x02];
+        let mut r = Reader::new(&data);
+        r.u16().unwrap();
+        assert!(r.u8().is_err());
+    }
+
+    #[test]
+    fn reader_seek_validates_bounds() {
+        let data = [0; 4];
+        let mut r = Reader::new(&data);
+        assert!(r.seek(4).is_ok());
+        assert!(r.seek(5).is_err());
+    }
+
+    #[test]
+    fn reader_bytes_returns_slice() {
+        let data = [10, 20, 30, 40];
+        let mut r = Reader::new(&data);
+        let s = r.bytes(3).unwrap();
+        assert_eq!(s, &[10, 20, 30]);
+        assert_eq!(r.pos, 3);
+    }
+
+    #[test]
+    fn category_from_byte_maps_all_valid() {
+        assert_eq!(category_from_byte(1).unwrap(), AppearanceCategory::Object);
+        assert_eq!(category_from_byte(2).unwrap(), AppearanceCategory::Outfit);
+        assert_eq!(category_from_byte(3).unwrap(), AppearanceCategory::Effect);
+        assert_eq!(category_from_byte(4).unwrap(), AppearanceCategory::Missile);
+    }
+
+    #[test]
+    fn category_from_byte_rejects_invalid() {
+        assert!(category_from_byte(0).is_err());
+        assert!(category_from_byte(5).is_err());
+        assert!(category_from_byte(255).is_err());
+    }
+
+    #[test]
+    fn decode_tile_converts_argb_to_rgba() {
+        let mut raw = vec![0u8; TILE_BYTES];
+        raw[0] = 0xFF;
+        raw[1] = 0x10;
+        raw[2] = 0x20;
+        raw[3] = 0x30;
+        let img = decode_tile(&raw).unwrap();
+        let px = img.get_pixel(0, 0);
+        assert_eq!(px.0, [0x10, 0x20, 0x30, 0xFF]);
+    }
+
+    #[test]
+    fn decode_tile_rejects_wrong_size() {
+        assert!(decode_tile(&[0u8; 100]).is_err());
+        assert!(decode_tile(&[0u8; TILE_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn compose_single_tile_passthrough() {
+        let tile = RgbaImage::new(TILE, TILE);
+        let out = compose(&[tile], 1, 1);
+        assert_eq!(out.width(), TILE);
+        assert_eq!(out.height(), TILE);
+    }
+
+    #[test]
+    fn compose_2x2_grid_dimensions() {
+        let tiles: Vec<RgbaImage> = (0..4).map(|_| RgbaImage::new(TILE, TILE)).collect();
+        let out = compose(&tiles, 2, 2);
+        assert_eq!(out.width(), TILE * 2);
+        assert_eq!(out.height(), TILE * 2);
+    }
+
+    fn make_minimal_obd_v200(category: u8, frames: u32) -> Vec<u8> {
+        let texture_pos: u32 = 9;
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&200u16.to_le_bytes());
+        raw.extend_from_slice(&1200u16.to_le_bytes());
+        raw.push(category);
+        raw.extend_from_slice(&texture_pos.to_le_bytes());
+        raw.push(1); // tile_w
+        raw.push(1); // tile_h
+        raw.push(1); // layers
+        raw.push(1); // px
+        raw.push(1); // py
+        raw.push(1); // pz
+        raw.push(frames as u8);
+        if frames > 1 {
+            raw.push(0);
+            raw.extend_from_slice(&0u32.to_le_bytes());
+            raw.push(0);
+            for _ in 0..frames {
+                raw.extend_from_slice(&100u32.to_le_bytes());
+                raw.extend_from_slice(&200u32.to_le_bytes());
+            }
+        }
+        for i in 0..frames {
+            raw.extend_from_slice(&(i + 1).to_le_bytes());
+            raw.extend_from_slice(&vec![0u8; TILE_BYTES]);
+        }
+        let mut compressed = Vec::new();
+        lzma_rs::lzma_compress(&mut &raw[..], &mut compressed).unwrap();
+        compressed
+    }
+
+    #[test]
+    fn parse_obd_minimal_object() {
+        let data = make_minimal_obd_v200(1, 1);
+        let import = parse_obd(&data).unwrap();
+        assert_eq!(import.category, AppearanceCategory::Object);
+        assert_eq!(import.frame_groups.len(), 1);
+        assert_eq!(import.frame_groups[0].sprites.len(), 1);
+        assert_eq!(import.frame_groups[0].sprites[0].width(), TILE);
+    }
+
+    #[test]
+    fn parse_obd_rejects_bad_version() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&999u16.to_le_bytes());
+        raw.extend_from_slice(&1200u16.to_le_bytes());
+        raw.push(1);
+        raw.extend_from_slice(&9u32.to_le_bytes());
+        let mut compressed = Vec::new();
+        lzma_rs::lzma_compress(&mut &raw[..], &mut compressed).unwrap();
+        assert!(parse_obd(&compressed)
+            .unwrap_err()
+            .contains("unsupported version 999"));
+    }
+
+    #[test]
+    fn parse_obd_rejects_bad_category() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&200u16.to_le_bytes());
+        raw.extend_from_slice(&1200u16.to_le_bytes());
+        raw.push(99);
+        raw.extend_from_slice(&9u32.to_le_bytes());
+        raw.push(1); raw.push(1);
+        raw.push(1); raw.push(1); raw.push(1); raw.push(1); raw.push(1);
+        let mut compressed = Vec::new();
+        lzma_rs::lzma_compress(&mut &raw[..], &mut compressed).unwrap();
+        assert!(parse_obd(&compressed)
+            .unwrap_err()
+            .contains("unknown appearance category"));
+    }
+
+    #[test]
+    fn parse_obd_rejects_truncated_data() {
+        assert!(parse_obd(&[]).is_err());
+        assert!(parse_obd(&[0x5d, 0x00]).is_err());
+    }
+
+    #[test]
+    fn parse_obd_multiple_frames() {
+        let data = make_minimal_obd_v200(1, 3);
+        let import = parse_obd(&data).unwrap();
+        assert_eq!(import.frame_groups[0].frames, 3);
+        assert_eq!(import.frame_groups[0].sprites.len(), 3);
+    }
+
+    #[test]
+    fn build_appearance_maps_sprite_ids() {
+        let data = make_minimal_obd_v200(1, 2);
+        let import = parse_obd(&data).unwrap();
+        let ids = vec![vec![100, 101]];
+        let app = build_appearance(&import, 42, &ids);
+        assert_eq!(app.id.0, 42);
+        assert_eq!(app.category, AppearanceCategory::Object);
+        assert_eq!(app.sprite_ids, vec![100, 101]);
     }
 }
