@@ -196,36 +196,17 @@ fn build_display_cycle(app: &AppearanceInfo) -> (Vec<u32>, Vec<u32>) {
         return (Vec::new(), Vec::new());
     }
 
-    // Tibia convention: outfits face south by default (pattern_x=2 of NESW).
-    // The other categories don't have a direction column.
     let (pw_default, target_direction_x) = match app.category {
         AppearanceCategory::Outfit => (4u32, 2u32),
         _ => (1u32, 0u32),
     };
 
-    let pw = si.pattern_width.unwrap_or(pw_default).max(1);
-    let ph = si.pattern_height.unwrap_or(1).max(1);
-    let pd = si.pattern_depth.unwrap_or(1).max(1);
-    let layers = si.layers.unwrap_or(1).max(1);
-
-    let cells_per_phase = (pw as usize)
-        .saturating_mul(ph as usize)
-        .saturating_mul(pd as usize)
-        .saturating_mul(layers as usize);
-    let total = si.sprite_ids.len();
-
-    // Phase count: prefer the proto's animation block; otherwise infer from
-    // the flat list length under the (pw, ph, pd, layers) we picked above.
-    // Capped so monstrous lists (72+) don't make the thumbnail flicker at a
-    // hundred phases per second.
-    const MAX_INFERRED_PHASES: u32 = 12;
-    let phases = if let Some(anim) = si.animation.as_ref() {
-        anim.sprite_phases.len().max(1) as u32
-    } else if cells_per_phase > 0 && total >= cells_per_phase {
-        ((total / cells_per_phase) as u32).clamp(1, MAX_INFERRED_PHASES)
-    } else {
-        1
-    };
+    let dims = super::resolve_dims(si, pw_default, Some(12));
+    let pw = dims.pw;
+    let ph = dims.ph;
+    let pd = dims.pd;
+    let layers = dims.layers;
+    let phases = dims.phases;
 
     let direction_x = target_direction_x.min(pw.saturating_sub(1));
 
@@ -1426,7 +1407,7 @@ pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32
     };
 
     let entry = atlas.create_sheet(spritetype).map_err(|e| e.to_string())?;
-    let capacity = (entry.lastspriteid - entry.firstspriteid + 1) as usize;
+    let capacity = (entry.lastspriteid.saturating_sub(entry.firstspriteid) + 1) as usize;
     if total_sprites > capacity {
         return Err(format!(
             "OBD needs {total_sprites} sprites but a single {tile_w}×{tile_h} sheet \

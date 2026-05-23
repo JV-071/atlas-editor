@@ -144,37 +144,14 @@ fn first_sprite_info(app: &AppearanceInfo) -> Result<(&SpriteInfoData, ResolvedD
     Ok((si, resolve_dims(app.category, si)))
 }
 
-/// Pattern dimensions after applying Tibia-convention fallbacks.
-#[derive(Debug, Clone, Copy)]
-struct ResolvedDims {
-    pw: u32,
-    ph: u32,
-    pd: u32,
-    layers: u32,
-    phases: u32,
-}
+use super::ResolvedDims;
 
 fn resolve_dims(category: AppearanceCategory, si: &SpriteInfoData) -> ResolvedDims {
-    // Same heuristic as the list-row thumbnail builder: outfits default
-    // to four directions, others to a flat list. Real proto values
-    // always win when present.
     let pw_default = match category {
         AppearanceCategory::Outfit | AppearanceCategory::Missile => 4,
         _ => 1,
     };
-    let pw = si.pattern_width.unwrap_or(pw_default).max(1);
-    let ph = si.pattern_height.unwrap_or(1).max(1);
-    let pd = si.pattern_depth.unwrap_or(1).max(1);
-    let layers = si.layers.unwrap_or(1).max(1);
-    let cells_per_phase = (pw as usize) * (ph as usize) * (pd as usize) * (layers as usize);
-    let phases = if let Some(anim) = si.animation.as_ref() {
-        anim.sprite_phases.len().max(1) as u32
-    } else if cells_per_phase > 0 && si.sprite_ids.len() >= cells_per_phase {
-        ((si.sprite_ids.len() / cells_per_phase) as u32).max(1)
-    } else {
-        1
-    };
-    ResolvedDims { pw, ph, pd, layers, phases }
+    super::resolve_dims(si, pw_default, None)
 }
 
 /// Compute the flat sprite-id index for a (phase, z, y, x, layer) cell.
@@ -334,4 +311,119 @@ fn write_outfit_pngs(
         return Err("no sprites to export".into());
     }
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_appearances::{AssetId, SpriteAnimationData, SpriteInfoData, SpritePhase};
+
+    fn make_sprite_info(ids: Vec<u32>) -> SpriteInfoData {
+        SpriteInfoData {
+            pattern_width: None,
+            pattern_height: None,
+            pattern_depth: None,
+            layers: None,
+            sprite_ids: ids,
+            animation: None,
+            bounding_square: None,
+            is_opaque: None,
+            bounding_box_per_direction: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn resolve_dims_object_defaults() {
+        let si = make_sprite_info(vec![1, 2, 3, 4]);
+        let d = resolve_dims(AppearanceCategory::Object, &si);
+        assert_eq!(d.pw, 1);
+        assert_eq!(d.phases, 4);
+    }
+
+    #[test]
+    fn resolve_dims_outfit_defaults_to_4_directions() {
+        let si = make_sprite_info(vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        let d = resolve_dims(AppearanceCategory::Outfit, &si);
+        assert_eq!(d.pw, 4);
+        assert_eq!(d.phases, 2);
+    }
+
+    #[test]
+    fn resolve_dims_missile_defaults_to_4_width() {
+        let si = make_sprite_info((1..=9).collect());
+        let d = resolve_dims(AppearanceCategory::Missile, &si);
+        assert_eq!(d.pw, 4);
+    }
+
+    #[test]
+    fn resolve_dims_uses_animation_phase_count() {
+        let mut si = make_sprite_info(vec![1, 2, 3]);
+        si.animation = Some(SpriteAnimationData {
+            default_start_phase: None,
+            synchronized: None,
+            random_start_phase: None,
+            loop_type: None,
+            loop_count: None,
+            sprite_phases: vec![
+                SpritePhase { duration_min: Some(100), duration_max: Some(200) },
+                SpritePhase { duration_min: Some(100), duration_max: Some(200) },
+            ],
+        });
+        let d = resolve_dims(AppearanceCategory::Object, &si);
+        assert_eq!(d.phases, 2);
+    }
+
+    #[test]
+    fn sprite_index_basic_layout() {
+        let dims = ResolvedDims { pw: 4, ph: 1, pd: 1, layers: 1, phases: 2 };
+        assert_eq!(sprite_index(&dims, 0, 0, 0, 0, 0), 0);
+        assert_eq!(sprite_index(&dims, 0, 0, 0, 2, 0), 2);
+        assert_eq!(sprite_index(&dims, 1, 0, 0, 0, 0), 4);
+    }
+
+    #[test]
+    fn phase_durations_defaults_to_100ms() {
+        let si = make_sprite_info(vec![1]);
+        let d = phase_durations(&si, 3);
+        assert_eq!(d, vec![100, 100, 100]);
+    }
+
+    #[test]
+    fn phase_durations_averages_min_max() {
+        let mut si = make_sprite_info(vec![1]);
+        si.animation = Some(SpriteAnimationData {
+            default_start_phase: None,
+            synchronized: None,
+            random_start_phase: None,
+            loop_type: None,
+            loop_count: None,
+            sprite_phases: vec![
+                SpritePhase { duration_min: Some(100), duration_max: Some(300) },
+            ],
+        });
+        let d = phase_durations(&si, 1);
+        assert_eq!(d, vec![200]);
+    }
+
+    #[test]
+    fn first_sprite_info_rejects_empty_appearance() {
+        let app = AppearanceInfo {
+            id: AssetId(1),
+            category: AppearanceCategory::Object,
+            name: None,
+            description: None,
+            flags: Default::default(),
+            frame_groups: Vec::new(),
+            sprite_ids: Vec::new(),
+        };
+        assert!(first_sprite_info(&app).is_err());
+    }
+
+    #[test]
+    fn export_format_default_for_category() {
+        assert_eq!(ExportFormat::default_for(AppearanceCategory::Object), ExportFormat::ItemGif);
+        assert_eq!(ExportFormat::default_for(AppearanceCategory::Outfit), ExportFormat::OutfitPngs);
+        assert_eq!(ExportFormat::default_for(AppearanceCategory::Effect), ExportFormat::EffectGif);
+        assert_eq!(ExportFormat::default_for(AppearanceCategory::Missile), ExportFormat::MissileGif);
+    }
 }
