@@ -49,7 +49,7 @@ pub struct ConvertResult {
 
 #[tauri::command]
 pub fn converter_peek(_inputs: ConverterInputs) -> Result<ConverterPreview, String> {
-    Err("converter not implemented yet — see docs/phase-7-todo.md".into())
+    Err("converter not implemented yet".into())
 }
 
 #[tauri::command]
@@ -57,5 +57,5 @@ pub fn converter_run(
     _inputs: ConverterInputs,
     _options: ConvertOptions,
 ) -> Result<ConvertResult, String> {
-    Err("converter not implemented yet — see docs/phase-7-todo.md".into())
+    Err("converter not implemented yet".into())
 }
