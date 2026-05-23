@@ -25,6 +25,9 @@ export const en = {
   "home.tool.otbConverter.title": "OTB Converter",
   "home.tool.otbConverter.description":
     "Turn a legacy items.otb (plus client .dat/.spr) into a modern Tibia 12+ assets bundle.",
+  "home.tool.mapConverter.title": "Map Converter",
+  "home.tool.mapConverter.description":
+    "Convert item IDs in .otbm maps between client IDs and server IDs (and vice versa).",
   "home.badge.comingSoon": "Coming soon",
   "home.badge.ready": "Ready",
   "home.badge.beta": "Beta",

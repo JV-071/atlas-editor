@@ -22,6 +22,9 @@ export const es: Record<MessageKey, string> = {
   "home.tool.otbConverter.title": "Conversor OTB",
   "home.tool.otbConverter.description":
     "Convierte un items.otb antiguo (+ .dat/.spr del cliente) en un paquete Tibia 12+ moderno.",
+  "home.tool.mapConverter.title": "Conversor de Mapa",
+  "home.tool.mapConverter.description":
+    "Convierte IDs de ítems en mapas .otbm entre client IDs y server IDs (y viceversa).",
   "home.badge.comingSoon": "Próximamente",
   "home.badge.ready": "Listo",
   "home.badge.beta": "Beta",

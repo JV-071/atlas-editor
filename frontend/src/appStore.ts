@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 /// Which tool the user is currently in. `home` is the launcher tile
 /// grid; the others are the actual editors.
-export type Tool = "home" | "assets" | "converter" | "map";
+export type Tool = "home" | "assets" | "converter" | "mapConverter" | "map";
 
 interface AppState {
   tool: Tool;

@@ -100,8 +100,8 @@ const FLAG_DESCRIPTIONS: Record<string, string> = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50 overflow-hidden">
-      <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
+    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50">
+      <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border rounded-t-lg">
         {title}
       </h3>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 px-4 py-3">{children}</div>
@@ -324,7 +324,7 @@ function CompositeSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50 overflow-hidden">
+    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50">
       <div className="flex items-center gap-2 px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
         <input
           type="checkbox"
@@ -1016,8 +1016,8 @@ export function AttributeEditor() {
           </div>
         )}
 
-        <section className="rounded-lg border border-atlas-border bg-atlas-paper/50 overflow-hidden">
-          <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
+        <section className="rounded-lg border border-atlas-border bg-atlas-paper/50">
+          <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border rounded-t-lg">
             {t("attr.section.sprites")}
           </h3>
           <div className="px-4 py-3">

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ArrowRight, FileCog, ImagePlus, Map } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, FileCog, ImagePlus, Map } from "lucide-react";
 
 import logoUrl from "./shared/logo.png";
 import { cn } from "./shared/utils";
@@ -97,15 +97,7 @@ export function HomeScreen() {
         <p className="text-xs text-atlas-muted mt-0.5">{t("home.subtitle")}</p>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
-        <Tile
-          icon={<Map className="h-6 w-6" />}
-          title={t("home.tool.mapEditor.title")}
-          description={t("home.tool.mapEditor.description")}
-          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
-          onClick={() => {}}
-          disabled
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
         <Tile
           icon={<ImagePlus className="h-6 w-6" />}
           title={t("home.tool.assetsEditor.title")}
@@ -117,8 +109,25 @@ export function HomeScreen() {
           icon={<FileCog className="h-6 w-6" />}
           title={t("home.tool.otbConverter.title")}
           description={t("home.tool.otbConverter.description")}
-          badge={{ label: t("home.badge.beta"), tone: "muted" }}
-          onClick={() => open("converter")}
+          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
+          onClick={() => {}}
+          disabled
+        />
+        <Tile
+          icon={<ArrowLeftRight className="h-6 w-6" />}
+          title={t("home.tool.mapConverter.title")}
+          description={t("home.tool.mapConverter.description")}
+          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
+          onClick={() => {}}
+          disabled
+        />
+        <Tile
+          icon={<Map className="h-6 w-6" />}
+          title={t("home.tool.mapEditor.title")}
+          description={t("home.tool.mapEditor.description")}
+          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
+          onClick={() => {}}
+          disabled
         />
       </div>
 
