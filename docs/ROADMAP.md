@@ -10,17 +10,21 @@ pass. Estimates are calendar-light: hours of focused work, not wall-clock.
 
 | # | Phase                       | Effort | Branch                              | Status |
 |---|-----------------------------|--------|-------------------------------------|--------|
-| 1 | Attribute editor            | ~16h   | `feat/phase-1-attribute-editor`     | In progress |
-| 2 | Image export                | ~12h   | `feat/phase-2-image-export`         | Pending |
-| 3 | Batch export queue          | ~6h    | `feat/phase-3-export-queue`         | Pending |
-| 4 | Search dialog               | ~6h    | `feat/phase-4-search-dialog`        | Pending |
+| 1 | Attribute editor            | ~16h   | `feat/phase-1-attribute-editor`     | Done |
+| 2 | Image export                | ~12h   | `feat/phase-2-image-export`         | Done |
+| 3 | Batch export queue          | ~6h    | `feat/phase-3-export-queue`         | Done |
+| 4 | Search dialog               | ~6h    | `feat/phase-4-search-dialog`        | Done |
 | 5 | Sprite sheet editor (v1)    | ~8h    | `feat/phase-5-sheet-editor`         | Done |
 | 5b| Sprite sheet write-back     | ~12h   | `feat/phase-5b-sheet-writeback`     | Done |
 | 6 | Cross-client importer (OBD) | ~14h   | `feat/phase-6-importer`             | Done |
-| 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | In progress |
+| 7 | Profiles                    | ~8h    | `feat/phase-7-profiles`             | Done |
 | 8 | Lua scripting               | ~24h   | `feat/phase-8-lua`                  | Skipped (user opted out) |
 
-Total: ~106h.
+Total: ~106h. All non-skipped phases shipped to `main`.
+
+The remaining open work (cross-client `.dat`/`.spr` import, Map
+Converter, Map Editor) is tracked outside this roadmap because it is
+not part of the legacy WPF feature port.
 
 ## Tech decisions
 
