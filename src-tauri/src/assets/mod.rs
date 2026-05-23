@@ -44,5 +44,11 @@ pub(crate) fn resolve_dims(
     } else {
         1
     };
-    ResolvedDims { pw, ph, pd, layers, phases }
+    ResolvedDims {
+        pw,
+        ph,
+        pd,
+        layers,
+        phases,
+    }
 }

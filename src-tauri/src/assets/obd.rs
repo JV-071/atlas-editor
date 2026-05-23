@@ -501,8 +501,13 @@ mod tests {
         raw.extend_from_slice(&1200u16.to_le_bytes());
         raw.push(99);
         raw.extend_from_slice(&9u32.to_le_bytes());
-        raw.push(1); raw.push(1);
-        raw.push(1); raw.push(1); raw.push(1); raw.push(1); raw.push(1);
+        raw.push(1);
+        raw.push(1);
+        raw.push(1);
+        raw.push(1);
+        raw.push(1);
+        raw.push(1);
+        raw.push(1);
         let mut compressed = Vec::new();
         lzma_rs::lzma_compress(&mut &raw[..], &mut compressed).unwrap();
         assert!(parse_obd(&compressed)

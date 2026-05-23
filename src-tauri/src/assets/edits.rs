@@ -7,9 +7,9 @@
 
 use atlas_appearances::{
     AppearanceInfo, Appearances, AutomapInfo, BankInfo, ChangedToExpireInfo, ClothesInfo,
-    CyclopediaInfo, DefaultActionInfo, HeightInfo, HookInfo, ImbueableInfo, LenshelpInfo, LightInfo,
-    MarketInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo, UpgradeClassificationInfo,
-    WriteInfo, WriteOnceInfo,
+    CyclopediaInfo, DefaultActionInfo, HeightInfo, HookInfo, ImbueableInfo, LenshelpInfo,
+    LightInfo, MarketInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo,
+    UpgradeClassificationInfo, WriteInfo, WriteOnceInfo,
 };
 use atlas_core::{HookType, ItemCategory, PlayerAction, Vocation, WeaponType};
 use atlas_otb::{ExpireFlags, ItemGroup, Otb, OtbItem};
@@ -341,9 +341,11 @@ fn optional_u8(v: &Value, field: &str) -> Result<Option<u8>, String> {
     match v {
         Value::Null => Ok(None),
         Value::Number(n) => {
-            let raw = n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))?;
-            let val = u8::try_from(raw)
-                .map_err(|_| format!("{field}: value {raw} overflows u8"))?;
+            let raw = n
+                .as_u64()
+                .ok_or_else(|| format!("{field} must be unsigned"))?;
+            let val =
+                u8::try_from(raw).map_err(|_| format!("{field}: value {raw} overflows u8"))?;
             Ok(Some(val))
         }
         _ => Err(format!("{field} expects number or null")),
@@ -354,9 +356,11 @@ fn optional_u16(v: &Value, field: &str) -> Result<Option<u16>, String> {
     match v {
         Value::Null => Ok(None),
         Value::Number(n) => {
-            let raw = n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))?;
-            let val = u16::try_from(raw)
-                .map_err(|_| format!("{field}: value {raw} overflows u16"))?;
+            let raw = n
+                .as_u64()
+                .ok_or_else(|| format!("{field} must be unsigned"))?;
+            let val =
+                u16::try_from(raw).map_err(|_| format!("{field}: value {raw} overflows u16"))?;
             Ok(Some(val))
         }
         _ => Err(format!("{field} expects number or null")),
@@ -367,9 +371,11 @@ fn optional_u32(v: &Value, field: &str) -> Result<Option<u32>, String> {
     match v {
         Value::Null => Ok(None),
         Value::Number(n) => {
-            let raw = n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))?;
-            let val = u32::try_from(raw)
-                .map_err(|_| format!("{field}: value {raw} overflows u32"))?;
+            let raw = n
+                .as_u64()
+                .ok_or_else(|| format!("{field} must be unsigned"))?;
+            let val =
+                u32::try_from(raw).map_err(|_| format!("{field}: value {raw} overflows u32"))?;
             Ok(Some(val))
         }
         _ => Err(format!("{field} expects number or null")),

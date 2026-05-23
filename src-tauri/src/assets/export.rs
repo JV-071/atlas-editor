@@ -223,7 +223,11 @@ fn phase_durations(si: &SpriteInfoData, phases: u32) -> Vec<u32> {
     (0..phases as usize)
         .map(|i| {
             let d = from_proto.get(i).copied().unwrap_or(100);
-            if d == 0 { 100 } else { d }
+            if d == 0 {
+                100
+            } else {
+                d
+            }
         })
         .collect()
 }
@@ -279,14 +283,12 @@ fn write_outfit_pngs(
                 for y in 0..dims.ph {
                     for x in 0..dims.pw {
                         for phase in 0..dims.phases {
-                            let idx =
-                                sprite_index(&dims, phase, z, y, x, layer) as usize;
+                            let idx = sprite_index(&dims, phase, z, y, x, layer) as usize;
                             let Some(&id) = si.sprite_ids.get(idx) else {
                                 continue;
                             };
                             let img = atlas.sprite(id).map_err(|e| e.to_string())?;
-                            let bytes =
-                                encode_png_rgba(&img).map_err(|e| e.to_string())?;
+                            let bytes = encode_png_rgba(&img).map_err(|e| e.to_string())?;
                             let suffix = if layer > 0 { "_template" } else { "" };
                             let name = format!(
                                 "{}_{}_{}_{}_{}{}.png",
@@ -365,8 +367,14 @@ mod tests {
             loop_type: None,
             loop_count: None,
             sprite_phases: vec![
-                SpritePhase { duration_min: Some(100), duration_max: Some(200) },
-                SpritePhase { duration_min: Some(100), duration_max: Some(200) },
+                SpritePhase {
+                    duration_min: Some(100),
+                    duration_max: Some(200),
+                },
+                SpritePhase {
+                    duration_min: Some(100),
+                    duration_max: Some(200),
+                },
             ],
         });
         let d = resolve_dims(AppearanceCategory::Object, &si);
@@ -375,7 +383,13 @@ mod tests {
 
     #[test]
     fn sprite_index_basic_layout() {
-        let dims = ResolvedDims { pw: 4, ph: 1, pd: 1, layers: 1, phases: 2 };
+        let dims = ResolvedDims {
+            pw: 4,
+            ph: 1,
+            pd: 1,
+            layers: 1,
+            phases: 2,
+        };
         assert_eq!(sprite_index(&dims, 0, 0, 0, 0, 0), 0);
         assert_eq!(sprite_index(&dims, 0, 0, 0, 2, 0), 2);
         assert_eq!(sprite_index(&dims, 1, 0, 0, 0, 0), 4);
@@ -397,9 +411,10 @@ mod tests {
             random_start_phase: None,
             loop_type: None,
             loop_count: None,
-            sprite_phases: vec![
-                SpritePhase { duration_min: Some(100), duration_max: Some(300) },
-            ],
+            sprite_phases: vec![SpritePhase {
+                duration_min: Some(100),
+                duration_max: Some(300),
+            }],
         });
         let d = phase_durations(&si, 1);
         assert_eq!(d, vec![200]);
@@ -421,9 +436,21 @@ mod tests {
 
     #[test]
     fn export_format_default_for_category() {
-        assert_eq!(ExportFormat::default_for(AppearanceCategory::Object), ExportFormat::ItemGif);
-        assert_eq!(ExportFormat::default_for(AppearanceCategory::Outfit), ExportFormat::OutfitPngs);
-        assert_eq!(ExportFormat::default_for(AppearanceCategory::Effect), ExportFormat::EffectGif);
-        assert_eq!(ExportFormat::default_for(AppearanceCategory::Missile), ExportFormat::MissileGif);
+        assert_eq!(
+            ExportFormat::default_for(AppearanceCategory::Object),
+            ExportFormat::ItemGif
+        );
+        assert_eq!(
+            ExportFormat::default_for(AppearanceCategory::Outfit),
+            ExportFormat::OutfitPngs
+        );
+        assert_eq!(
+            ExportFormat::default_for(AppearanceCategory::Effect),
+            ExportFormat::EffectGif
+        );
+        assert_eq!(
+            ExportFormat::default_for(AppearanceCategory::Missile),
+            ExportFormat::MissileGif
+        );
     }
 }

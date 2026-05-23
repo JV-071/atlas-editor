@@ -167,7 +167,11 @@ fn appearance_flags_mask(app: &AppearanceInfo) -> u32 {
     set(FlagBit::Clip, f.clip, &mut mask);
     set(FlagBit::Bottom, f.bottom, &mut mask);
     set(FlagBit::Top, f.top, &mut mask);
-    set(FlagBit::NoMovementAnimation, f.no_movement_animation, &mut mask);
+    set(
+        FlagBit::NoMovementAnimation,
+        f.no_movement_animation,
+        &mut mask,
+    );
     set(FlagBit::Translucent, f.translucent, &mut mask);
     set(FlagBit::LyingObject, f.lying_object, &mut mask);
     set(FlagBit::Fullbank, f.fullbank, &mut mask);
@@ -830,13 +834,7 @@ pub fn create_appearance(
     if next_id == u32::MAX {
         return Err("appearance id space exhausted".into());
     }
-    let entry = snapshot_entity(
-        &guard.workspace,
-        Entity::Appearance {
-            scope,
-            id: next_id,
-        },
-    );
+    let entry = snapshot_entity(&guard.workspace, Entity::Appearance { scope, id: next_id });
     let category = match scope {
         AppearanceScope::Object => atlas_core::AppearanceCategory::Object,
         AppearanceScope::Outfit => atlas_core::AppearanceCategory::Outfit,
@@ -1166,8 +1164,7 @@ pub fn get_sheet_png_url(
     sheet_file: String,
     state: State<'_, SharedWorkspace>,
 ) -> Result<String, String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
     let sheet = atlas.sheet_image(&sheet_file).map_err(|e| e.to_string())?;
     let png = atlas_sprites::encode_png_rgba(&sheet).map_err(|e| e.to_string())?;
     Ok(atlas_sprites::png_to_data_url(&png))
@@ -1182,8 +1179,7 @@ pub fn export_sheet_png_file(
     output_path: String,
     state: State<'_, SharedWorkspace>,
 ) -> Result<String, String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
     let sheet = atlas.sheet_image(&sheet_file).map_err(|e| e.to_string())?;
     let png = atlas_sprites::encode_png_rgba(&sheet).map_err(|e| e.to_string())?;
     let path = std::path::PathBuf::from(&output_path);
@@ -1200,8 +1196,7 @@ pub fn export_sprite_png_file(
     output_path: String,
     state: State<'_, SharedWorkspace>,
 ) -> Result<String, String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
     let img = atlas.sprite(sprite_id).map_err(|e| e.to_string())?;
     let png = atlas_sprites::encode_png_rgba(&img).map_err(|e| e.to_string())?;
     let path = std::path::PathBuf::from(&output_path);
@@ -1220,22 +1215,19 @@ pub fn replace_sprite_from_png(
     image_path: String,
     state: State<'_, SharedWorkspace>,
 ) -> Result<(), String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
-    let bytes = std::fs::read(&image_path)
-        .map_err(|e| format!("read {image_path}: {e}"))?;
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
+    let bytes = std::fs::read(&image_path).map_err(|e| format!("read {image_path}: {e}"))?;
     let img = atlas_sprites::decode_rgba(&bytes).map_err(|e| e.to_string())?;
-    atlas.replace_sprite(sprite_id, &img).map_err(|e| e.to_string())
+    atlas
+        .replace_sprite(sprite_id, &img)
+        .map_err(|e| e.to_string())
 }
 
 /// Flush every dirty sheet back to disk (preserving each sheet's
 /// original Cipsoft prefix). Returns the file names written.
 #[tauri::command]
-pub fn save_sprite_sheets(
-    state: State<'_, SharedWorkspace>,
-) -> Result<Vec<String>, String> {
-    let atlas = checkout_atlas(&state)?
-        .ok_or("assets dir is not set — open assets first")?;
+pub fn save_sprite_sheets(state: State<'_, SharedWorkspace>) -> Result<Vec<String>, String> {
+    let atlas = checkout_atlas(&state)?.ok_or("assets dir is not set — open assets first")?;
     atlas.save_dirty_sheets().map_err(|e| e.to_string())
 }
 
@@ -1289,8 +1281,7 @@ fn append_sheet_to_catalog(
     entry: &atlas_sprites::SpriteSheetEntry,
 ) -> Result<(), String> {
     let catalog_path = assets_dir.join("catalog-content.json");
-    let bytes = std::fs::read(&catalog_path)
-        .map_err(|e| format!("read {catalog_path:?}: {e}"))?;
+    let bytes = std::fs::read(&catalog_path).map_err(|e| format!("read {catalog_path:?}: {e}"))?;
     let mut entries: Vec<serde_json::Value> =
         serde_json::from_slice(&bytes).map_err(|e| format!("parse catalog: {e}"))?;
     entries.push(serde_json::json!({
@@ -1301,14 +1292,13 @@ fn append_sheet_to_catalog(
         "lastspriteid": entry.lastspriteid,
         "area": entry.area,
     }));
-    let serialized = serde_json::to_vec_pretty(&entries)
-        .map_err(|e| format!("serialize catalog: {e}"))?;
+    let serialized =
+        serde_json::to_vec_pretty(&entries).map_err(|e| format!("serialize catalog: {e}"))?;
     let tmp = catalog_path.with_extension("json.tmp");
     std::fs::write(&tmp, &serialized).map_err(|e| format!("write {tmp:?}: {e}"))?;
     std::fs::rename(&tmp, &catalog_path).map_err(|e| format!("rename catalog: {e}"))?;
     Ok(())
 }
-
 
 /// Map an OBD tile composition (`tile_w` × `tile_h`, in 32px units) to
 /// the catalog `spritetype` whose tile size matches. Tibia only ships
@@ -1467,7 +1457,9 @@ pub fn import_obd(path: String, state: State<'_, SharedWorkspace>) -> Result<u32
     // Persist appearances.dat right away so the import survives a crash.
     if let Some(path) = guard.appearances_path.clone() {
         if let Some(app) = guard.workspace.appearances.as_ref() {
-            write_with_backup(&path, |dst| app.save_to_file(dst).map_err(|e| e.to_string()))?;
+            write_with_backup(&path, |dst| {
+                app.save_to_file(dst).map_err(|e| e.to_string())
+            })?;
             guard.dirty = false;
         }
     }
@@ -1916,9 +1908,7 @@ pub struct UnmappedReport {
 }
 
 #[tauri::command]
-pub fn get_unmapped_report(
-    state: State<'_, SharedWorkspace>,
-) -> Result<UnmappedReport, String> {
+pub fn get_unmapped_report(state: State<'_, SharedWorkspace>) -> Result<UnmappedReport, String> {
     let guard = state.lock().map_err(|e| e.to_string())?;
     let appearances = guard
         .workspace

@@ -637,11 +637,7 @@ impl Atlas {
     /// written. Clears the dirty set on success.
     pub fn save_dirty_sheets(&self) -> Result<Vec<String>> {
         let mut written = Vec::new();
-        let files: Vec<String> = self
-            .dirty_sheets
-            .iter()
-            .map(|e| e.key().clone())
-            .collect();
+        let files: Vec<String> = self.dirty_sheets.iter().map(|e| e.key().clone()).collect();
         for file in files {
             let prefix = self
                 .dirty_sheets
@@ -740,7 +736,6 @@ impl Atlas {
         }
         Ok(entry)
     }
-
 
     fn load_sheet(&self, file: &str) -> Result<std::sync::Arc<RgbaImage>> {
         if let Some(hit) = self.sheet_cache.get(file) {

@@ -64,7 +64,10 @@ pub fn encode_animated_gif(
     }
     let width = frames[0].width() as u16;
     let height = frames[0].height() as u16;
-    if frames.iter().any(|f| f.width() as u16 != width || f.height() as u16 != height) {
+    if frames
+        .iter()
+        .any(|f| f.width() as u16 != width || f.height() as u16 != height)
+    {
         return Err(SpriteError::Catalog(
             "encode_animated_gif: every frame must share the first frame's dimensions".into(),
         ));
