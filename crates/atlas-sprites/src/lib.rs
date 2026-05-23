@@ -620,11 +620,9 @@ impl Atlas {
             .insert(file.clone(), std::sync::Arc::new(img));
         self.png_cache.remove(&sprite_id);
 
-        // Capture the original prefix the first time a sheet goes
-        // dirty so a later save can preserve it.
-        if !self.dirty_sheets.contains_key(&file) {
-            let prefix = self.read_sheet_prefix(&file)?;
-            self.dirty_sheets.insert(file, prefix);
+        if let dashmap::mapref::entry::Entry::Vacant(slot) = self.dirty_sheets.entry(file) {
+            let prefix = self.read_sheet_prefix(slot.key())?;
+            slot.insert(prefix);
         }
         Ok(())
     }
