@@ -315,9 +315,10 @@ fn require_bool(v: &Value, field: &str) -> Result<bool, String> {
 }
 
 fn require_u32(v: &Value, field: &str) -> Result<u32, String> {
-    v.as_u64()
-        .map(|n| n as u32)
-        .ok_or_else(|| format!("{field} expects unsigned integer"))
+    let n = v
+        .as_u64()
+        .ok_or_else(|| format!("{field} expects unsigned integer"))?;
+    u32::try_from(n).map_err(|_| format!("{field}: value {n} overflows u32"))
 }
 
 fn optional_string(v: &Value, field: &str) -> Result<Option<String>, String> {
@@ -339,10 +340,12 @@ fn optional_bool(v: &Value, field: &str) -> Result<Option<bool>, String> {
 fn optional_u8(v: &Value, field: &str) -> Result<Option<u8>, String> {
     match v {
         Value::Null => Ok(None),
-        Value::Number(n) => Ok(Some(
-            n.as_u64()
-                .ok_or_else(|| format!("{field} must be unsigned"))? as u8,
-        )),
+        Value::Number(n) => {
+            let raw = n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))?;
+            let val = u8::try_from(raw)
+                .map_err(|_| format!("{field}: value {raw} overflows u8"))?;
+            Ok(Some(val))
+        }
         _ => Err(format!("{field} expects number or null")),
     }
 }
@@ -350,10 +353,12 @@ fn optional_u8(v: &Value, field: &str) -> Result<Option<u8>, String> {
 fn optional_u16(v: &Value, field: &str) -> Result<Option<u16>, String> {
     match v {
         Value::Null => Ok(None),
-        Value::Number(n) => Ok(Some(
-            n.as_u64()
-                .ok_or_else(|| format!("{field} must be unsigned"))? as u16,
-        )),
+        Value::Number(n) => {
+            let raw = n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))?;
+            let val = u16::try_from(raw)
+                .map_err(|_| format!("{field}: value {raw} overflows u16"))?;
+            Ok(Some(val))
+        }
         _ => Err(format!("{field} expects number or null")),
     }
 }
@@ -361,10 +366,12 @@ fn optional_u16(v: &Value, field: &str) -> Result<Option<u16>, String> {
 fn optional_u32(v: &Value, field: &str) -> Result<Option<u32>, String> {
     match v {
         Value::Null => Ok(None),
-        Value::Number(n) => Ok(Some(
-            n.as_u64()
-                .ok_or_else(|| format!("{field} must be unsigned"))? as u32,
-        )),
+        Value::Number(n) => {
+            let raw = n.as_u64().ok_or_else(|| format!("{field} must be unsigned"))?;
+            let val = u32::try_from(raw)
+                .map_err(|_| format!("{field}: value {raw} overflows u32"))?;
+            Ok(Some(val))
+        }
         _ => Err(format!("{field} expects number or null")),
     }
 }
