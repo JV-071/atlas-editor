@@ -115,6 +115,7 @@ function OverflowMenu() {
 
 export function FileBar() {
   const summary = useWorkspace((s) => s.summary);
+  const versionHint = useWorkspace((s) => s.versionHint);
   const status = useWorkspace((s) => s.status);
   const error = useWorkspace((s) => s.error);
   const closeWorkspace = useWorkspace((s) => s.closeWorkspace);
@@ -171,11 +172,8 @@ export function FileBar() {
 
       <div className="flex-1 min-w-0 text-xs text-atlas-muted truncate">
         {summary.appearancesPath && (
-          <span title={summary.appearancesPath}>
-            <span className="text-atlas-ink">{basename(summary.appearancesPath)}</span>{" "}
-            <span className="text-atlas-muted">
-              · {summary.objectCount.toLocaleString()} objects
-            </span>
+          <span className="text-atlas-ink" title={summary.appearancesPath}>
+            {versionHint ? `Tibia ${versionHint}` : basename(summary.appearancesPath)}
           </span>
         )}
         {status === "loading" && <span className="text-amber-700 ml-2">loading…</span>}
