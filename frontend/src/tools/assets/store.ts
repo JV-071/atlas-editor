@@ -143,6 +143,12 @@ interface WorkspaceState {
   refreshRecent: () => Promise<void>;
   refreshSelectedDetails: () => Promise<void>;
   refreshAssetsDirInfo: () => Promise<void>;
+  /// Re-fetch `WorkspaceSummary` from the backend. Needed after a page
+  /// reload — Vite HMR sometimes invalidates frontend modules while the
+  /// backend keeps the parsed workspace alive, so `assetsDir` rehydrates
+  /// but the appearance counts stay at `emptySummary` (zeros). The
+  /// AssetsEditor mount effect calls this alongside the other refreshes.
+  refreshSummary: () => Promise<void>;
 
   updateAppearanceField: (field: string, value: unknown) => Promise<void>;
   undo: () => Promise<void>;
@@ -291,6 +297,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   async closeWorkspace() {
     const summary = await invoke<WorkspaceSummary>("close_workspace");
+    // The backend wipes its workspace; mirror that on the frontend so the
+    // launcher returns to the "no bundle staged" state instead of keeping
+    // the green preview card around with stale path + sheet count.
     set({
       summary,
       rowsByCategory: emptyRowsByCategory,
@@ -299,6 +308,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedAppearance: null,
       query: "",
       error: null,
+      assetsDir: null,
+      versionHint: null,
     });
   },
 
@@ -362,6 +373,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     try {
       const info = await invoke<AssetsDirInfo | null>("get_assets_dir_info");
       set({ assetsDir: info });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  async refreshSummary() {
+    try {
+      const summary = await invoke<WorkspaceSummary>("get_workspace_summary");
+      set({ summary });
     } catch (e) {
       set({ error: String(e) });
     }

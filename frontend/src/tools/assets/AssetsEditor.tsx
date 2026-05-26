@@ -53,25 +53,44 @@ export function AssetsEditor() {
   const refreshRows = useWorkspace((s) => s.refreshRows);
   const refreshRecent = useWorkspace((s) => s.refreshRecent);
   const refreshAssetsDirInfo = useWorkspace((s) => s.refreshAssetsDirInfo);
+  const refreshSummary = useWorkspace((s) => s.refreshSummary);
   const refreshPixelFormat = useWorkspace((s) => s.refreshPixelFormat);
   const refreshProfiles = useWorkspace((s) => s.refreshProfiles);
-  const enterEditor = useWorkspace((s) => s.enterEditor);
 
   // On mount, sync with backend state (the parsed workspace survives
-  // hot-reloads in `cargo tauri dev`), then jump straight into the
-  // editor if anything is already loaded.
+  // hot-reloads in `cargo tauri dev`, F5, and home↔assets navigation).
+  // We deliberately do NOT auto-enter the editor here: the launcher's
+  // job is to let the user confirm or replace the staged bundle before
+  // committing. `refreshSummary` is critical so the preview card shows
+  // real appearance counts (not zeros) when the backend already has a
+  // bundle but the frontend store was just re-initialized.
   useEffect(() => {
     (async () => {
       await Promise.all([
         refreshRows(),
         refreshRecent(),
         refreshAssetsDirInfo(),
+        refreshSummary(),
         refreshPixelFormat(),
         refreshProfiles(),
       ]);
-      const summary = useWorkspace.getState().summary;
-      const hasState = summary.appearancesPath != null || summary.objectCount > 0;
-      if (hasState) await enterEditor();
+      const state = useWorkspace.getState();
+      const { summary, assetsDir } = state;
+      const totalAppearances =
+        summary.objectCount +
+        summary.outfitCount +
+        summary.effectCount +
+        summary.missileCount;
+      // Real Tibia bundles always have thousands of objects + at least a
+      // few outfits/effects/missiles. Zero across all four categories
+      // with a non-null path is a sentinel for a corrupted or
+      // partially-hydrated workspace (e.g. backend was restarted mid-edit
+      // or the appearances file moved on disk). Tear it down so the
+      // launcher renders the empty pick prompt instead of a green card
+      // pointing at unusable data.
+      if (totalAppearances === 0 && (summary.appearancesPath != null || assetsDir != null)) {
+        await state.closeWorkspace();
+      }
     })().catch(() => {
       // Initial load failures shouldn't break the launcher.
     });
@@ -79,9 +98,9 @@ export function AssetsEditor() {
     refreshRows,
     refreshRecent,
     refreshAssetsDirInfo,
+    refreshSummary,
     refreshPixelFormat,
     refreshProfiles,
-    enterEditor,
   ]);
 
   // Memoize per-view render so React doesn't tear down/recreate the
