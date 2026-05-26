@@ -198,6 +198,33 @@ export const WEAPON_TYPES: WeaponType[] = [
   "Throw",
 ];
 
+/// Numeric IDs mirror the proto enums in
+/// `crates/atlas-appearances/proto/appearances.proto`. Keep these in
+/// sync if the proto is ever updated. Each `*_ID` map is used by the
+/// attribute editor to render dropdowns as `Name (id)` so the user can
+/// see exactly what integer is stored on disk.
+export const VOCATION_ID: Record<Vocation, number> = {
+  Any: -1,
+  None: 0,
+  Knight: 1,
+  Paladin: 2,
+  Sorcerer: 3,
+  Druid: 4,
+  Monk: 5,
+  Promoted: 10,
+};
+export const WEAPON_TYPE_ID: Record<WeaponType, number> = {
+  NoWeapon: 0,
+  Sword: 1,
+  Axe: 2,
+  Club: 3,
+  Fist: 4,
+  Bow: 5,
+  Crossbow: 6,
+  WandRod: 7,
+  Throw: 8,
+};
+
 export interface AppearanceInfoDto {
   id: { 0: number } | number; // AssetId serializes as a tuple struct
   category: Category;
@@ -289,6 +316,10 @@ export function spriteIndex(
 
 export type HookDirection = "South" | "East";
 export const HOOK_DIRECTIONS: HookDirection[] = ["South", "East"];
+export const HOOK_DIRECTION_ID: Record<HookDirection, number> = {
+  South: 1,
+  East: 2,
+};
 
 export type PlayerAction =
   | "None"
@@ -303,6 +334,13 @@ export const PLAYER_ACTIONS: PlayerAction[] = [
   "Open",
   "AutowalkHighlight",
 ];
+export const PLAYER_ACTION_ID: Record<PlayerAction, number> = {
+  None: 0,
+  Look: 1,
+  Use: 2,
+  Open: 3,
+  AutowalkHighlight: 4,
+};
 
 export const ITEM_CATEGORIES: ItemCategoryEnum[] = [
   "Armors",
@@ -333,6 +371,35 @@ export const ITEM_CATEGORIES: ItemCategoryEnum[] = [
   "SoulCores",
   "FistWeapons",
 ];
+export const ITEM_CATEGORY_ID: Record<ItemCategoryEnum, number> = {
+  Armors: 1,
+  Amulets: 2,
+  Boots: 3,
+  Containers: 4,
+  Decoration: 5,
+  Food: 6,
+  HelmetsHats: 7,
+  Legs: 8,
+  Others: 9,
+  Potions: 10,
+  Rings: 11,
+  Runes: 12,
+  Shields: 13,
+  Tools: 14,
+  Valuables: 15,
+  Ammunition: 16,
+  Axes: 17,
+  Clubs: 18,
+  DistanceWeapons: 19,
+  Swords: 20,
+  WandsRods: 21,
+  PremiumScrolls: 22,
+  TibiaCoins: 23,
+  CreatureProducts: 24,
+  Quiver: 25,
+  SoulCores: 26,
+  FistWeapons: 27,
+};
 
 export interface AppearanceFlagsDto {
   // Behavior / interaction.
@@ -416,7 +483,22 @@ export interface AppearanceFlagsDto {
   imbueable: { slotCount: number } | null;
   proficiency: { proficiencyId: number } | null;
 
+  /// `repeated AppearanceFlagNPC` in the proto — list of NPCs that buy or
+  /// sell this item. Empty array (`[]`) means no NPC trades it; the Rust
+  /// model uses `Vec<NpcSaleInfo>` (never `Option<Vec>`), so the field is
+  /// always present, never null.
+  npcSaleData: NpcSaleInfoDto[];
+
   [key: string]: unknown;
+}
+
+export interface NpcSaleInfoDto {
+  name: string | null;
+  location: string | null;
+  salePrice: number | null;
+  buyPrice: number | null;
+  currencyObjectTypeId: number | null;
+  currencyQuestFlagDisplayName: string | null;
 }
 
 /// Helper to read AssetId — Rust's `AssetId(pub u32)` serializes as

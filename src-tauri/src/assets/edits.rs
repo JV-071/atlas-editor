@@ -8,7 +8,7 @@
 use atlas_appearances::{
     AppearanceInfo, Appearances, AutomapInfo, BankInfo, ChangedToExpireInfo, ClothesInfo,
     CyclopediaInfo, DefaultActionInfo, HeightInfo, HookInfo, ImbueableInfo, LenshelpInfo,
-    LightInfo, MarketInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo,
+    LightInfo, MarketInfo, NpcSaleInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo,
     UpgradeClassificationInfo, WriteInfo, WriteOnceInfo,
 };
 use atlas_core::{HookType, ItemCategory, PlayerAction, Vocation, WeaponType};
@@ -149,6 +149,23 @@ fn apply_appearance_field(a: &mut AppearanceInfo, field: &str, value: Value) -> 
         "flags.proficiency" => {
             set_composite::<ProficiencyInfo>(&mut a.flags.proficiency, value, field)
         }
+
+        // NPC sale data is a `repeated AppearanceFlagNPC` in the proto, so
+        // the frontend sends the whole list (potentially empty). An empty
+        // array means the item is no longer sold by any NPC; `null` is
+        // accepted as a synonym.
+        "flags.npc_sale_data" => match value {
+            Value::Null => {
+                a.flags.npc_sale_data.clear();
+                Ok(())
+            }
+            v => {
+                let parsed: Vec<NpcSaleInfo> =
+                    serde_json::from_value(v).map_err(|e| format!("{field}: {e}"))?;
+                a.flags.npc_sale_data = parsed;
+                Ok(())
+            }
+        },
 
         // Legacy per-field handlers kept for the parts of the UI that
         // haven't switched to whole-composite updates yet.

@@ -1,19 +1,25 @@
 import { useMemo, useState } from "react";
-import { Clipboard, ClipboardPaste, Download, HelpCircle } from "lucide-react";
+import { Clipboard, ClipboardPaste, Download, HelpCircle, Plus, X } from "lucide-react";
 
 import { ExportDialog } from "./ExportDialog";
 import { useWorkspace } from "./store";
 import {
   HOOK_DIRECTIONS,
+  HOOK_DIRECTION_ID,
   ITEM_CATEGORIES,
+  ITEM_CATEGORY_ID,
   PLAYER_ACTIONS,
+  PLAYER_ACTION_ID,
   VOCATIONS,
+  VOCATION_ID,
   WEAPON_TYPES,
+  WEAPON_TYPE_ID,
   readAssetId,
   type AppearanceFlagsDto,
   type AppearanceInfoDto,
   type HookDirection,
   type ItemCategoryEnum,
+  type NpcSaleInfoDto,
   type PlayerAction,
   type Vocation,
   type WeaponType,
@@ -110,20 +116,28 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const desc = FLAG_DESCRIPTIONS[label];
+  const t = useT();
+  // Try the i18n key first ("attr.field.<label>.desc"); fall back to the
+  // legacy in-file English map so newly-added labels still surface a
+  // tooltip until they're translated.
+  const i18nKey = `attr.field.${label}.desc`;
+  const translated = t(i18nKey as never);
+  const desc = translated !== i18nKey ? translated : FLAG_DESCRIPTIONS[label];
   return (
     <label className="flex items-center justify-between gap-2 text-sm">
-      <span className="flex items-center gap-1 text-atlas-ink-soft truncate">
-        {desc && (
-          <span className="relative shrink-0 flex group/tip">
-            <HelpCircle className="h-3.5 w-3.5 text-atlas-muted/60 hover:text-atlas-ink cursor-help" />
-            <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-30 w-max max-w-[220px] rounded bg-atlas-ink px-2 py-1 text-[11px] leading-tight text-atlas-cream shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity">
-              {desc}
-            </span>
+      {/* Help icon + tooltip live OUTSIDE the truncated label span so the
+          tooltip can overflow the parent box. `truncate` applies
+          overflow:hidden, which would otherwise clip the absolutely
+          positioned bubble to a few characters wide. */}
+      {desc && (
+        <span className="relative shrink-0 flex group/tip">
+          <HelpCircle className="h-3.5 w-3.5 text-atlas-muted/60 hover:text-atlas-ink cursor-help" />
+          <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-30 w-max max-w-[280px] rounded bg-atlas-ink px-2 py-1 text-[11px] leading-tight text-atlas-cream shadow-lg opacity-0 group-hover/tip:opacity-100 transition-opacity whitespace-normal">
+            {desc}
           </span>
-        )}
-        {label}
-      </span>
+        </span>
+      )}
+      <span className="flex-1 min-w-0 text-atlas-ink-soft truncate">{label}</span>
       <div className="flex-1 max-w-[160px]">{children}</div>
     </label>
   );
@@ -215,11 +229,16 @@ function Select<T extends string>({
   options,
   onCommit,
   nullable = true,
+  idMap,
 }: {
   value: T | null;
   options: readonly T[];
   onCommit: (v: T | null) => void;
   nullable?: boolean;
+  /// Optional map from enum string to its proto numeric ID. When
+  /// provided, options render as `Name (id)` so the user can see the
+  /// integer that ends up on disk in the appearances.dat protobuf.
+  idMap?: Record<T, number>;
 }) {
   return (
     <select
@@ -237,7 +256,7 @@ function Select<T extends string>({
       {nullable && <option value="">—</option>}
       {options.map((opt) => (
         <option key={opt} value={opt}>
-          {opt}
+          {idMap ? `${opt} (${idMap[opt]})` : opt}
         </option>
       ))}
     </select>
@@ -269,8 +288,9 @@ function VocationPicker({
                 ? "bg-atlas-ink text-atlas-cream border-atlas-ink"
                 : "bg-atlas-cream text-atlas-muted border-atlas-border hover:text-atlas-ink",
             )}
+            title={`${voc} (${VOCATION_ID[voc]})`}
           >
-            {voc}
+            {voc} ({VOCATION_ID[voc]})
           </button>
         );
       })}
@@ -340,6 +360,203 @@ function CompositeSection({
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 px-4 py-3">{children}</div>
       )}
     </section>
+  );
+}
+
+/// `repeated AppearanceFlagNPC npcsaledata = 40` rendered as a table:
+/// each row is one NPC trading the item. Toggling the header checkbox
+/// off clears the list; toggling it on stages an empty row so the
+/// user has something to fill in. Edits commit on input blur so we
+/// don't fire an IPC per keystroke.
+function NpcSaleDataSection({
+  rows,
+  onCommit,
+}: {
+  rows: NpcSaleInfoDto[];
+  onCommit: (rows: NpcSaleInfoDto[]) => void;
+}) {
+  const t = useT();
+  const enabled = rows.length > 0;
+
+  function update(idx: number, patch: Partial<NpcSaleInfoDto>) {
+    const next = rows.map((r, i) => (i === idx ? { ...r, ...patch } : r));
+    onCommit(next);
+  }
+
+  function addRow() {
+    onCommit([
+      ...rows,
+      {
+        name: null,
+        location: null,
+        salePrice: null,
+        buyPrice: null,
+        currencyObjectTypeId: null,
+        currencyQuestFlagDisplayName: null,
+      },
+    ]);
+  }
+
+  function removeRow(idx: number) {
+    onCommit(rows.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50">
+      <div className="flex items-center gap-2 px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => (e.target.checked ? addRow() : onCommit([]))}
+          className="h-4 w-4 accent-atlas-ink cursor-pointer"
+        />
+        <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold flex-1">
+          {t("attr.section.npcSaleData")}
+        </h3>
+        {enabled && (
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex items-center gap-1 text-[11px] text-atlas-muted hover:text-atlas-ink"
+          >
+            <Plus className="h-3 w-3" />
+            {t("attr.npcSale.add")}
+          </button>
+        )}
+      </div>
+      {enabled && (
+        <div className="px-4 py-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-atlas-muted">
+              <tr>
+                <th className="text-left font-normal px-1 py-1">{t("attr.npcSale.name")}</th>
+                <th className="text-left font-normal px-1 py-1">{t("attr.npcSale.location")}</th>
+                <th className="text-right font-normal px-1 py-1">{t("attr.npcSale.buyPrice")}</th>
+                <th className="text-right font-normal px-1 py-1">{t("attr.npcSale.salePrice")}</th>
+                <th className="text-right font-normal px-1 py-1">{t("attr.npcSale.currencyId")}</th>
+                <th className="text-left font-normal px-1 py-1">{t("attr.npcSale.currencyName")}</th>
+                <th className="w-6" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <NpcSaleRow
+                  key={idx}
+                  row={row}
+                  onPatch={(patch) => update(idx, patch)}
+                  onRemove={() => removeRow(idx)}
+                  removeLabel={t("attr.npcSale.remove")}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function NpcSaleRow({
+  row,
+  onPatch,
+  onRemove,
+  removeLabel,
+}: {
+  row: NpcSaleInfoDto;
+  onPatch: (patch: Partial<NpcSaleInfoDto>) => void;
+  onRemove: () => void;
+  removeLabel: string;
+}) {
+  const cell = "px-1 py-0.5";
+  const inputCls =
+    "w-full px-1.5 py-0.5 rounded border border-atlas-border bg-atlas-cream text-xs text-atlas-ink focus:outline-none focus:border-atlas-ink";
+  return (
+    <tr>
+      <td className={cell}>
+        <input
+          type="text"
+          defaultValue={row.name ?? ""}
+          onBlur={(e) => {
+            const v = e.target.value.length === 0 ? null : e.target.value;
+            if (v !== row.name) onPatch({ name: v });
+          }}
+          className={inputCls}
+        />
+      </td>
+      <td className={cell}>
+        <input
+          type="text"
+          defaultValue={row.location ?? ""}
+          onBlur={(e) => {
+            const v = e.target.value.length === 0 ? null : e.target.value;
+            if (v !== row.location) onPatch({ location: v });
+          }}
+          className={inputCls}
+        />
+      </td>
+      <td className={cell}>
+        <input
+          type="number"
+          min={0}
+          defaultValue={row.buyPrice ?? ""}
+          onBlur={(e) => {
+            const raw = e.target.value;
+            const v = raw === "" ? null : Number(raw);
+            if (v !== row.buyPrice) onPatch({ buyPrice: v });
+          }}
+          className={cn(inputCls, "text-right")}
+        />
+      </td>
+      <td className={cell}>
+        <input
+          type="number"
+          min={0}
+          defaultValue={row.salePrice ?? ""}
+          onBlur={(e) => {
+            const raw = e.target.value;
+            const v = raw === "" ? null : Number(raw);
+            if (v !== row.salePrice) onPatch({ salePrice: v });
+          }}
+          className={cn(inputCls, "text-right")}
+        />
+      </td>
+      <td className={cell}>
+        <input
+          type="number"
+          min={0}
+          defaultValue={row.currencyObjectTypeId ?? ""}
+          onBlur={(e) => {
+            const raw = e.target.value;
+            const v = raw === "" ? null : Number(raw);
+            if (v !== row.currencyObjectTypeId) onPatch({ currencyObjectTypeId: v });
+          }}
+          className={cn(inputCls, "text-right")}
+        />
+      </td>
+      <td className={cell}>
+        <input
+          type="text"
+          defaultValue={row.currencyQuestFlagDisplayName ?? ""}
+          onBlur={(e) => {
+            const v = e.target.value.length === 0 ? null : e.target.value;
+            if (v !== row.currencyQuestFlagDisplayName) {
+              onPatch({ currencyQuestFlagDisplayName: v });
+            }
+          }}
+          className={inputCls}
+        />
+      </td>
+      <td className={cell}>
+        <button
+          type="button"
+          onClick={onRemove}
+          title={removeLabel}
+          className="p-1 rounded text-atlas-muted hover:text-rose-700 hover:bg-rose-700/10"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -476,6 +693,7 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
           <Select<WeaponType>
             value={flags.weaponType}
             options={WEAPON_TYPES}
+            idMap={WEAPON_TYPE_ID}
             onCommit={(v) => onUpdate("flags.weapon_type", v)}
           />
         </Field>
@@ -650,6 +868,7 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
           <Select<HookDirection>
             value={flags.hook?.direction ?? null}
             options={HOOK_DIRECTIONS}
+            idMap={HOOK_DIRECTION_ID}
             nullable={false}
             onCommit={(v) =>
               onUpdate("flags.hook", { direction: v ?? "South" })
@@ -668,6 +887,7 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
           <Select<PlayerAction>
             value={flags.defaultAction?.action ?? null}
             options={PLAYER_ACTIONS}
+            idMap={PLAYER_ACTION_ID}
             onCommit={(v) =>
               onUpdate("flags.default_action", { action: v })
             }
@@ -689,6 +909,7 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
           <Select<ItemCategoryEnum>
             value={flags.market?.category ?? null}
             options={ITEM_CATEGORIES}
+            idMap={ITEM_CATEGORY_ID}
             onCommit={(v) =>
               onUpdate("flags.market", {
                 category: v,
@@ -725,6 +946,11 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
           />
         </Field>
       </CompositeSection>
+
+      <NpcSaleDataSection
+        rows={flags.npcSaleData ?? []}
+        onCommit={(rows) => onUpdate("flags.npc_sale_data", rows)}
+      />
 
       <CompositeSection
         title={t("attr.section.imbueable")}
