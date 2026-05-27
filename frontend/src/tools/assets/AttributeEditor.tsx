@@ -17,10 +17,12 @@ import {
   readAssetId,
   type AppearanceFlagsDto,
   type AppearanceInfoDto,
+  type FrameGroupInfoDto,
   type HookDirection,
   type ItemCategoryEnum,
   type NpcSaleInfoDto,
   type PlayerAction,
+  type SpriteAnimationDataDto,
   type Vocation,
   type WeaponType,
 } from "./types";
@@ -560,6 +562,241 @@ function NpcSaleRow({
   );
 }
 
+// ---- Sprite animation editor ----
+
+type LoopType = "PingPong" | "Infinite" | "Counted";
+const LOOP_TYPES: LoopType[] = ["PingPong", "Infinite", "Counted"];
+const LOOP_TYPE_ID: Record<LoopType, number> = {
+  PingPong: -1,
+  Infinite: 0,
+  Counted: 1,
+};
+
+function frameGroupLabel(group: FrameGroupInfoDto, idx: number): string {
+  if (group.fixedFrameGroup === "OutfitIdle") return "Idle";
+  if (group.fixedFrameGroup === "OutfitMoving") return "Moving";
+  if (group.fixedFrameGroup === "ObjectInitial") return "Initial";
+  if (group.id != null) return `#${group.id}`;
+  return `${idx}`;
+}
+
+/// Edits `FrameGroup[group_idx].sprite_info.animation` for the selected
+/// appearance. When the appearance has multiple frame groups (typically
+/// outfits with Idle + Moving), a selector lets the user pick which
+/// group to edit. A null animation means the sprite is static — toggle
+/// the section to add or remove the animation block wholesale.
+function SpriteAnimationSection({
+  frameGroups,
+  onCommit,
+}: {
+  frameGroups: FrameGroupInfoDto[];
+  /// `animation = null` clears the animation. Backend replaces the whole
+  /// block on every commit.
+  onCommit: (groupIdx: number, animation: SpriteAnimationDataDto | null) => void;
+}) {
+  const t = useT();
+  // Only frame groups that have a sprite_info payload can host an
+  // animation. Outfits sometimes ship one group without sprite_info
+  // (degenerate proto entries); filter those out so we never offer the
+  // user a target where the commit would fail.
+  const editableGroups = frameGroups
+    .map((g, i) => ({ group: g, idx: i }))
+    .filter((entry) => entry.group.spriteInfo != null);
+  const [selectedIdx, setSelectedIdx] = useState<number>(
+    editableGroups[0]?.idx ?? 0,
+  );
+  // Reset selection if the appearance changes and the previous index is
+  // no longer valid.
+  const safeIdx = editableGroups.some((e) => e.idx === selectedIdx)
+    ? selectedIdx
+    : editableGroups[0]?.idx ?? 0;
+
+  if (editableGroups.length === 0) return null;
+  const spriteInfo = frameGroups[safeIdx]?.spriteInfo;
+  if (!spriteInfo) return null;
+  const animation = spriteInfo.animation;
+  const enabled = animation != null;
+
+  function setEnabled(on: boolean) {
+    onCommit(
+      safeIdx,
+      on
+        ? {
+            defaultStartPhase: null,
+            synchronized: null,
+            randomStartPhase: null,
+            loopType: "Infinite",
+            loopCount: null,
+            spritePhases: [{ durationMin: 0, durationMax: 0 }],
+          }
+        : null,
+    );
+  }
+
+  function updateAnimation(patch: Partial<SpriteAnimationDataDto>) {
+    if (!animation) return;
+    onCommit(safeIdx, { ...animation, ...patch });
+  }
+
+  function updatePhase(phaseIdx: number, patch: Partial<{ durationMin: number | null; durationMax: number | null }>) {
+    if (!animation) return;
+    const phases = animation.spritePhases.map((p, i) =>
+      i === phaseIdx ? { ...p, ...patch } : p,
+    );
+    onCommit(safeIdx, { ...animation, spritePhases: phases });
+  }
+
+  function applyFirstToAll() {
+    if (!animation || animation.spritePhases.length === 0) return;
+    const first = animation.spritePhases[0];
+    const phases = animation.spritePhases.map(() => ({ ...first }));
+    onCommit(safeIdx, { ...animation, spritePhases: phases });
+  }
+
+  const isCounted = animation?.loopType === "Counted";
+
+  return (
+    <section className="rounded-lg border border-atlas-border bg-atlas-paper/50">
+      <div className="flex items-center gap-2 px-4 py-2 bg-atlas-sand/40 border-b border-atlas-border">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          className="h-4 w-4 accent-atlas-ink cursor-pointer"
+        />
+        <h3 className="text-xs uppercase tracking-wider text-atlas-muted font-semibold flex-1">
+          {t("attr.section.spriteAnimation")}
+        </h3>
+        {editableGroups.length > 1 && (
+          <label className="flex items-center gap-1.5 text-[11px] text-atlas-muted">
+            {t("attr.anim.frameGroup")}:
+            <select
+              value={safeIdx}
+              onChange={(e) => setSelectedIdx(Number(e.target.value))}
+              className="px-1.5 py-0.5 rounded border border-atlas-border bg-atlas-cream text-xs text-atlas-ink focus:outline-none focus:border-atlas-ink"
+            >
+              {editableGroups.map(({ group, idx }) => (
+                <option key={idx} value={idx}>
+                  {frameGroupLabel(group, idx)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+      {enabled && animation && (
+        <div className="px-4 py-3 space-y-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            <Field label={t("attr.anim.defaultStartPhase")}>
+              <NumberInput
+                value={animation.defaultStartPhase}
+                min={0}
+                max={Math.max(0, animation.spritePhases.length - 1)}
+                onCommit={(v) => updateAnimation({ defaultStartPhase: v })}
+              />
+            </Field>
+            <Field label={t("attr.anim.loopType")}>
+              <Select<LoopType>
+                value={animation.loopType}
+                options={LOOP_TYPES}
+                idMap={LOOP_TYPE_ID}
+                nullable={false}
+                onCommit={(v) => updateAnimation({ loopType: v ?? "Infinite" })}
+              />
+            </Field>
+            <Field label={t("attr.anim.synchronized")}>
+              <Toggle
+                value={animation.synchronized ?? false}
+                onCommit={(v) => updateAnimation({ synchronized: v })}
+              />
+            </Field>
+            <Field label={t("attr.anim.randomStartPhase")}>
+              <Toggle
+                value={animation.randomStartPhase ?? false}
+                onCommit={(v) => updateAnimation({ randomStartPhase: v })}
+              />
+            </Field>
+            {isCounted && (
+              <Field label={t("attr.anim.loopCount")}>
+                <NumberInput
+                  value={animation.loopCount}
+                  min={0}
+                  onCommit={(v) => updateAnimation({ loopCount: v })}
+                />
+              </Field>
+            )}
+          </div>
+
+          <div className="border-t border-atlas-border pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-[11px] uppercase tracking-wider text-atlas-muted font-semibold">
+                {t("attr.anim.phases")}
+              </h4>
+              {animation.spritePhases.length > 1 && (
+                <button
+                  type="button"
+                  onClick={applyFirstToAll}
+                  className="text-[11px] text-atlas-muted hover:text-atlas-ink"
+                >
+                  {t("attr.anim.applyToAll")}
+                </button>
+              )}
+            </div>
+            <table className="w-full text-xs">
+              <thead className="text-atlas-muted">
+                <tr>
+                  <th className="text-left font-normal px-1 py-1 w-16">
+                    {t("attr.anim.phase")}
+                  </th>
+                  <th className="text-right font-normal px-1 py-1">
+                    {t("attr.anim.durationMin")}
+                  </th>
+                  <th className="text-right font-normal px-1 py-1">
+                    {t("attr.anim.durationMax")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {animation.spritePhases.map((phase, idx) => (
+                  <tr key={idx}>
+                    <td className="px-1 py-0.5 text-atlas-muted">{idx}</td>
+                    <td className="px-1 py-0.5">
+                      <input
+                        type="number"
+                        min={0}
+                        defaultValue={phase.durationMin ?? ""}
+                        onBlur={(e) => {
+                          const raw = e.target.value;
+                          const v = raw === "" ? null : Number(raw);
+                          if (v !== phase.durationMin) updatePhase(idx, { durationMin: v });
+                        }}
+                        className="w-full px-1.5 py-0.5 rounded border border-atlas-border bg-atlas-cream text-xs text-atlas-ink text-right focus:outline-none focus:border-atlas-ink"
+                      />
+                    </td>
+                    <td className="px-1 py-0.5">
+                      <input
+                        type="number"
+                        min={0}
+                        defaultValue={phase.durationMax ?? ""}
+                        onBlur={(e) => {
+                          const raw = e.target.value;
+                          const v = raw === "" ? null : Number(raw);
+                          if (v !== phase.durationMax) updatePhase(idx, { durationMax: v });
+                        }}
+                        className="w-full px-1.5 py-0.5 rounded border border-atlas-border bg-atlas-cream text-xs text-atlas-ink text-right focus:outline-none focus:border-atlas-ink"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ---- flag groupings (label, dtoKey, fieldPath) ----
 
 const BEHAVIOR_FLAGS: ReadonlyArray<
@@ -659,6 +896,13 @@ function AppearanceSection({ appearance }: { appearance: AppearanceInfoDto }) {
           />
         </Field>
       </Section>
+
+      <SpriteAnimationSection
+        frameGroups={appearance.frameGroups}
+        onCommit={(groupIdx, animation) =>
+          onUpdate("frame_groups.animation", { groupIdx, animation })
+        }
+      />
 
       <Section title={t("attr.section.behavior")}>
         <FlagGrid flags={flags} fields={BEHAVIOR_FLAGS} onUpdate={onUpdate} />

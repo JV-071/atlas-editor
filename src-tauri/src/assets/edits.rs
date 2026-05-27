@@ -9,12 +9,23 @@ use atlas_appearances::{
     AppearanceInfo, Appearances, AutomapInfo, BankInfo, ChangedToExpireInfo, ClothesInfo,
     CyclopediaInfo, DefaultActionInfo, HeightInfo, HookInfo, ImbueableInfo, LenshelpInfo,
     LightInfo, MarketInfo, NpcSaleInfo, ProficiencyInfo, ShiftInfo, SkillWheelGemInfo,
-    UpgradeClassificationInfo, WriteInfo, WriteOnceInfo,
+    SpriteAnimationData, UpgradeClassificationInfo, WriteInfo, WriteOnceInfo,
 };
 use atlas_core::{HookType, ItemCategory, PlayerAction, Vocation, WeaponType};
 use atlas_otb::{ExpireFlags, ItemGroup, Otb, OtbItem};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
+
+/// Wire format for the `frame_groups.animation` field. The frontend
+/// targets a frame-group index (0-based) and supplies the whole new
+/// animation block (or `null` to drop the animation, turning the
+/// sprite into a single static frame).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FrameGroupAnimationPatch {
+    group_idx: usize,
+    animation: Option<SpriteAnimationData>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -166,6 +177,27 @@ fn apply_appearance_field(a: &mut AppearanceInfo, field: &str, value: Value) -> 
                 Ok(())
             }
         },
+
+        // Animation lives under `frame_groups[idx].sprite_info.animation`,
+        // which the field-string router can't address directly. Take a
+        // small patch envelope and replace the whole animation block on
+        // the targeted frame group. Frontend always sends the full
+        // SpriteAnimationData (including all phases) so we never have to
+        // merge partial updates.
+        "frame_groups.animation" => {
+            let patch: FrameGroupAnimationPatch =
+                serde_json::from_value(value).map_err(|e| format!("{field}: {e}"))?;
+            let group = a
+                .frame_groups
+                .get_mut(patch.group_idx)
+                .ok_or_else(|| format!("{field}: no frame group at index {}", patch.group_idx))?;
+            let sprite_info = group
+                .sprite_info
+                .as_mut()
+                .ok_or_else(|| format!("{field}: frame group has no sprite_info"))?;
+            sprite_info.animation = patch.animation;
+            Ok(())
+        }
 
         // Legacy per-field handlers kept for the parts of the UI that
         // haven't switched to whole-composite updates yet.
