@@ -115,6 +115,18 @@ pub struct SpriteInfoData {
     pub bounding_square: Option<u32>,
     pub is_opaque: Option<bool>,
     pub bounding_box_per_direction: Vec<BoundingBox>,
+    /// Tibia 14+ pattern fields. Newer bundles ship a flattened
+    /// representation alongside (or instead of) the older
+    /// `pattern_width`/`pattern_height`/`pattern_depth`/`layers`+`animation`
+    /// quintet. The client tolerates both shapes; preserve them on
+    /// round-trip so saved files keep working across client versions.
+    pub pattern_size: Option<u32>,
+    pub pattern_layers: Option<u32>,
+    pub pattern_x: Option<u32>,
+    pub pattern_y: Option<u32>,
+    pub pattern_z: Option<u32>,
+    pub pattern_frames: Option<u32>,
+    pub is_animation: Option<bool>,
 }
 
 impl SpriteInfoData {
@@ -500,6 +512,13 @@ fn sprite_info_from_proto(si: proto::SpriteInfo) -> SpriteInfoData {
                 height: b.height,
             })
             .collect(),
+        pattern_size: si.pattern_size,
+        pattern_layers: si.pattern_layers,
+        pattern_x: si.pattern_x,
+        pattern_y: si.pattern_y,
+        pattern_z: si.pattern_z,
+        pattern_frames: si.pattern_frames,
+        is_animation: si.is_animation,
     }
 }
 
@@ -877,6 +896,13 @@ fn sprite_info_to_proto(si: &SpriteInfoData) -> proto::SpriteInfo {
                 height: b.height,
             })
             .collect(),
+        pattern_size: si.pattern_size,
+        pattern_layers: si.pattern_layers,
+        pattern_x: si.pattern_x,
+        pattern_y: si.pattern_y,
+        pattern_z: si.pattern_z,
+        pattern_frames: si.pattern_frames,
+        is_animation: si.is_animation,
     }
 }
 

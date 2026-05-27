@@ -129,6 +129,19 @@ message SpriteInfo {
 	optional uint32 bounding_square = 7;
 	optional bool is_opaque = 8;
 	repeated Box bounding_box_per_direction = 9;
+	// Tibia 14+ fields. These coexist with `pattern_width`/`pattern_height`/
+	// `pattern_depth`/`layers`/`animation` — newer bundles populate the
+	// `pattern_*` siblings below and may leave the older `animation` block
+	// empty, letting the client run on the implicit per-category defaults.
+	// Keep both readable so the editor works against any bundle vintage
+	// (matches the Assets-Editor C# tool's behaviour).
+	optional uint32 pattern_size = 10;
+	optional uint32 pattern_layers = 11;
+	optional uint32 pattern_x = 12;
+	optional uint32 pattern_y = 13;
+	optional uint32 pattern_z = 14;
+	optional uint32 pattern_frames = 15;
+	optional bool is_animation = 16;
 }
 
 message FrameGroup {

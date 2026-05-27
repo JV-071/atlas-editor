@@ -328,9 +328,7 @@ pub fn build_appearance(
                 layers: Some(fg.layers),
                 sprite_ids,
                 animation: fg.animation.clone(),
-                bounding_square: None,
-                is_opaque: None,
-                bounding_box_per_direction: Vec::new(),
+                ..SpriteInfoData::default()
             }),
         });
     }

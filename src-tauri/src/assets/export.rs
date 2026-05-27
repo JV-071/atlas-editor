@@ -322,15 +322,8 @@ mod tests {
 
     fn make_sprite_info(ids: Vec<u32>) -> SpriteInfoData {
         SpriteInfoData {
-            pattern_width: None,
-            pattern_height: None,
-            pattern_depth: None,
-            layers: None,
             sprite_ids: ids,
-            animation: None,
-            bounding_square: None,
-            is_opaque: None,
-            bounding_box_per_direction: Vec::new(),
+            ..SpriteInfoData::default()
         }
     }
 

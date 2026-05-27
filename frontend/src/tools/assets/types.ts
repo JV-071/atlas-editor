@@ -253,6 +253,17 @@ export interface SpriteInfoDataDto {
   boundingSquare: number | null;
   isOpaque: boolean | null;
   boundingBoxPerDirection: BoundingBoxDto[];
+  /// Tibia 14+ extra pattern fields. Newer bundles populate these
+  /// alongside (or instead of) the older `patternWidth`/`Height`/`Depth`/
+  /// `layers`+`animation` quintet; preserve them on round-trip even when
+  /// the UI doesn't surface them.
+  patternSize: number | null;
+  patternLayers: number | null;
+  patternX: number | null;
+  patternY: number | null;
+  patternZ: number | null;
+  patternFrames: number | null;
+  isAnimation: boolean | null;
 }
 
 export interface SpriteAnimationDataDto {
