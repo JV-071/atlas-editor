@@ -188,46 +188,28 @@ async function fetchAllCategories(): Promise<Record<AppearanceCategory, Appearan
   return Object.fromEntries(results) as Record<AppearanceCategory, AppearanceRow[]>;
 }
 
-/// Resize the current Tauri window between the compact launcher,
-/// staged launcher (preview card visible), and the full editor
-/// footprint. Falls back to a no-op when the API is unavailable
-/// (e.g. running in a plain browser preview).
+/// Adjust the Tauri window's `minSize` for the current view. Only the
+/// minimum is touched — the actual size and position are the user's
+/// to control. Earlier iterations called `setSize`/`center` here too,
+/// but that meant any view flip or F5 reload silently shrank a
+/// manually maximized window. The initial launch dimensions are now
+/// driven entirely by `tauri.conf.json`'s `windows[]` block; subsequent
+/// transitions just relax/tighten the minimum so the layout still has
+/// breathing room.
 ///
-/// Respects a maximized window: when the user has manually maximized
-/// (or set fullscreen), we only update `minSize` so the layout still
-/// has its breathing room, but we don't `setSize`/`center` — that
-/// would shrink the window out of the user's chosen state on every
-/// mount (e.g. after F5, or after each `view` flip).
+/// Falls back to a no-op when the API is unavailable (e.g. running in
+/// a plain browser preview).
 export type WindowMode = "launcher-empty" | "launcher-staged" | "editor";
 
 export async function resizeWindow(mode: WindowMode): Promise<void> {
   try {
     const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
-    const [maximized, fullscreen] = await Promise.all([
-      win.isMaximized().catch(() => false),
-      win.isFullscreen().catch(() => false),
-    ]);
-    const respectUserSize = maximized || fullscreen;
-    switch (mode) {
-      case "editor":
-        await win.setMinSize(new LogicalSize(900, 600));
-        if (!respectUserSize) await win.setSize(new LogicalSize(1280, 800));
-        break;
-      case "launcher-staged":
-        // Big enough to show the preview card + CTA without scrolling
-        // but still smaller than the editor so the transition is
-        // visible. No need to recenter — only the height grows.
-        await win.setMinSize(new LogicalSize(480, 360));
-        if (!respectUserSize) await win.setSize(new LogicalSize(680, 640));
-        break;
-      case "launcher-empty":
-      default:
-        await win.setMinSize(new LogicalSize(480, 360));
-        if (!respectUserSize) await win.setSize(new LogicalSize(640, 480));
-        break;
-    }
-    if (mode !== "launcher-staged" && !respectUserSize) await win.center();
+    const minSize =
+      mode === "editor"
+        ? new LogicalSize(900, 600)
+        : new LogicalSize(480, 360);
+    await win.setMinSize(minSize);
   } catch {
     // Ignore — we're probably not inside the Tauri shell.
   }
