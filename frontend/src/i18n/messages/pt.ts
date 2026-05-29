@@ -311,4 +311,10 @@ export const pt: Record<MessageKey, string> = {
   "mapconv.idsScanned": "IDs varridos",
   "mapconv.savedTo": "Salvo em",
   "mapconv.error": "Falha na conversão",
+  "mapconv.otb": "items.otb (opcional)",
+  "mapconv.otbHint": "Usa o mapeamento server↔client exato deste servidor. Sem ele, usa a tabela embutida da comunidade.",
+  "mapconv.otbClear": "Limpar",
+  "mapconv.source": "Fonte do mapeamento",
+  "mapconv.source.otb": "Do items.otb",
+  "mapconv.source.builtin": "Tabela embutida da comunidade",
 };

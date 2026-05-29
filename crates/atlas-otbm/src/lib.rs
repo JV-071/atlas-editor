@@ -15,7 +15,7 @@ mod idmap;
 mod otbm;
 
 pub use error::{OtbmError, Result};
-pub use idmap::{convert_id, table_len, Direction};
+pub use idmap::{Direction, IdMap};
 pub use otbm::{MapHeader, OtbmMap};
 
 /// Summary of a single file conversion, returned to callers (the Tauri
@@ -38,16 +38,16 @@ pub fn read_file(path: impl AsRef<Path>) -> Result<OtbmMap> {
     OtbmMap::parse(&bytes)
 }
 
-/// Read `input`, translate every item id in `direction`, and write the
+/// Read `input`, translate every item id through `id_map`, and write the
 /// result to `output`. `input` and `output` may be the same path.
 pub fn convert_file(
     input: impl AsRef<Path>,
     output: impl AsRef<Path>,
-    direction: Direction,
+    id_map: &IdMap,
 ) -> Result<ConversionReport> {
     let mut map = read_file(input)?;
     let ids_scanned = map.count_ids();
-    let ids_changed = map.convert_ids(direction);
+    let ids_changed = map.convert_ids(id_map);
 
     let output = output.as_ref();
     let bytes = map.to_bytes();
@@ -75,8 +75,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn direction_is_reexported() {
+    fn builtin_map_is_reexported() {
         // Smoke test that the public surface is wired up.
-        assert_eq!(convert_id(371, Direction::ServerToClient), 373);
+        assert_eq!(IdMap::builtin(Direction::ServerToClient).convert(371), 373);
     }
 }

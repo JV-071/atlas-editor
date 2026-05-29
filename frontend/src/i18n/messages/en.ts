@@ -316,6 +316,12 @@ export const en = {
   "mapconv.idsScanned": "IDs scanned",
   "mapconv.savedTo": "Saved to",
   "mapconv.error": "Conversion failed",
+  "mapconv.otb": "items.otb (optional)",
+  "mapconv.otbHint": "Use this server's exact server↔client mapping. Without it, a built-in community table is used.",
+  "mapconv.otbClear": "Clear",
+  "mapconv.source": "Mapping source",
+  "mapconv.source.otb": "From items.otb",
+  "mapconv.source.builtin": "Built-in community table",
 } as const;
 
 export type MessageKey = keyof typeof en;

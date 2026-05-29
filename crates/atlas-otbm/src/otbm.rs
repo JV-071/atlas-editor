@@ -13,7 +13,7 @@
 //! and removes any risk of dropping data we didn't model.
 
 use crate::error::{OtbmError, Result};
-use crate::idmap::{convert_id, Direction};
+use crate::idmap::IdMap;
 
 const NODE_ESC: u8 = 0xFD;
 const NODE_INIT: u8 = 0xFE;
@@ -201,13 +201,13 @@ impl OtbmMap {
         })
     }
 
-    /// Walk every node, translating item ids in the given direction.
-    /// Returns the number of ids actually changed (a value differing from
-    /// its translation). Item nodes carry their id inline; tile and
-    /// house-tile nodes carry an optional ground id in their attributes.
-    pub fn convert_ids(&mut self, direction: Direction) -> u32 {
+    /// Walk every node, translating item ids through `map`. Returns the
+    /// number of ids actually changed (a value differing from its
+    /// translation). Item nodes carry their id inline; tile and house-tile
+    /// nodes carry an optional ground id in their attributes.
+    pub fn convert_ids(&mut self, map: &IdMap) -> u32 {
         let mut changed = 0;
-        convert_node(&mut self.root, direction, &mut changed);
+        convert_node(&mut self.root, map, &mut changed);
         changed
     }
 
@@ -220,16 +220,16 @@ impl OtbmMap {
     }
 }
 
-fn convert_node(node: &mut Node, direction: Direction, changed: &mut u32) {
+fn convert_node(node: &mut Node, map: &IdMap, changed: &mut u32) {
     match node.node_type() {
-        Some(OTBM_ITEM) => patch_item_id(&mut node.body, direction, changed),
-        Some(OTBM_TILE) => patch_ground_id(&mut node.body, 3, direction, changed),
+        Some(OTBM_ITEM) => patch_item_id(&mut node.body, map, changed),
+        Some(OTBM_TILE) => patch_ground_id(&mut node.body, 3, map, changed),
         // House tile body is [type][x:u8][y:u8][houseId:u32], attrs after.
-        Some(OTBM_HOUSETILE) => patch_ground_id(&mut node.body, 7, direction, changed),
+        Some(OTBM_HOUSETILE) => patch_ground_id(&mut node.body, 7, map, changed),
         _ => {}
     }
     for child in &mut node.children {
-        convert_node(child, direction, changed);
+        convert_node(child, map, changed);
     }
 }
 
@@ -254,12 +254,12 @@ fn count_node(node: &Node, count: &mut u32) {
 }
 
 /// Item node body: `[0x06][id:u16 LE][attrs…]`.
-fn patch_item_id(body: &mut [u8], direction: Direction, changed: &mut u32) {
+fn patch_item_id(body: &mut [u8], map: &IdMap, changed: &mut u32) {
     if body.len() < 3 {
         return;
     }
     let id = u16::from_le_bytes([body[1], body[2]]);
-    let new = convert_id(id, direction);
+    let new = map.convert(id);
     if new != id {
         body[1..3].copy_from_slice(&new.to_le_bytes());
         *changed += 1;
@@ -269,10 +269,10 @@ fn patch_item_id(body: &mut [u8], direction: Direction, changed: &mut u32) {
 /// Patch the ground-item id (`OTBM_ATTR_ITEM`) inside a tile/house-tile
 /// body, if present. `attr_start` is the byte offset where the attribute
 /// list begins (past the fixed-size header).
-fn patch_ground_id(body: &mut [u8], attr_start: usize, direction: Direction, changed: &mut u32) {
+fn patch_ground_id(body: &mut [u8], attr_start: usize, map: &IdMap, changed: &mut u32) {
     if let Some(off) = find_ground_offset(body, attr_start) {
         let id = u16::from_le_bytes([body[off], body[off + 1]]);
-        let new = convert_id(id, direction);
+        let new = map.convert(id);
         if new != id {
             body[off..off + 2].copy_from_slice(&new.to_le_bytes());
             *changed += 1;
@@ -391,7 +391,7 @@ mod tests {
     fn converts_item_and_ground_ids() {
         let mut map = OtbmMap::parse(&sample_otbm()).unwrap();
         // server 371 -> client 373, server 372 -> client 374.
-        let changed = map.convert_ids(Direction::ServerToClient);
+        let changed = map.convert_ids(&IdMap::builtin(crate::idmap::Direction::ServerToClient));
         assert_eq!(changed, 2);
 
         // Re-parse the output and confirm the new ids stuck.
@@ -412,8 +412,8 @@ mod tests {
     #[test]
     fn conversion_round_trips_back() {
         let mut map = OtbmMap::parse(&sample_otbm()).unwrap();
-        map.convert_ids(Direction::ServerToClient);
-        map.convert_ids(Direction::ClientToServer);
+        map.convert_ids(&IdMap::builtin(crate::idmap::Direction::ServerToClient));
+        map.convert_ids(&IdMap::builtin(crate::idmap::Direction::ClientToServer));
         // server->client->server should restore the original bytes.
         assert_eq!(map.to_bytes(), sample_otbm());
     }

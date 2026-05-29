@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { AlertTriangle, ArrowLeft, ArrowLeftRight, Check, FolderOpen, Map } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowLeftRight, Check, FileText, FolderOpen, Map, X } from "lucide-react";
 
 import { useApp } from "../../appStore";
 import logoUrl from "../../shared/logo.png";
@@ -10,6 +10,8 @@ import { useT } from "../../i18n";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 
 type Direction = "serverToClient" | "clientToServer";
+
+type MapSource = "otb" | "builtin";
 
 interface MapPeek {
   path: string;
@@ -20,12 +22,14 @@ interface MapPeek {
   itemsMinor: number;
   idsScanned: number;
   tableEntries: number;
+  source: MapSource;
 }
 
 interface MapConvertResult {
   outputPath: string;
   idsChanged: number;
   idsScanned: number;
+  source: MapSource;
 }
 
 /// Compute a default sibling output path: `name-<dir>.otbm`.
@@ -56,6 +60,7 @@ export function MapConverterScreen() {
   const t = useT();
 
   const [inputPath, setInputPath] = useState<string | null>(null);
+  const [otbPath, setOtbPath] = useState<string | null>(null);
   const [direction, setDirection] = useState<Direction>("serverToClient");
   const [peek, setPeek] = useState<MapPeek | null>(null);
   const [outputPath, setOutputPath] = useState<string | null>(null);
@@ -86,8 +91,29 @@ export function MapConverterScreen() {
     setResult(null);
     // Refresh the default output suffix unless the user is overwriting.
     if (inputPath && !overwrite) setOutputPath(defaultOutput(inputPath, d));
-    // Table size depends on direction — invalidate the stale peek count.
-    setPeek((p) => (p ? { ...p } : p));
+    // Table size + source depend on direction — drop the stale peek so the
+    // user re-analyzes against the new direction.
+    setPeek(null);
+  }
+
+  async function pickOtb() {
+    const sel = await openDialog({
+      title: t("mapconv.otb"),
+      multiple: false,
+      directory: false,
+      filters: [{ name: "items.otb", extensions: ["otb"] }],
+    });
+    const path = Array.isArray(sel) ? sel[0] : sel;
+    if (!path) return;
+    setOtbPath(path);
+    setPeek(null);
+    setResult(null);
+  }
+
+  function clearOtb() {
+    setOtbPath(null);
+    setPeek(null);
+    setResult(null);
   }
 
   async function analyze() {
@@ -95,7 +121,11 @@ export function MapConverterScreen() {
     setError(null);
     setBusy(true);
     try {
-      const info = await invoke<MapPeek>("map_peek", { path: inputPath, direction });
+      const info = await invoke<MapPeek>("map_peek", {
+        path: inputPath,
+        direction,
+        otbPath,
+      });
       setPeek(info);
     } catch (e) {
       setError(String(e));
@@ -133,6 +163,7 @@ export function MapConverterScreen() {
         input: inputPath,
         output: outputPath,
         direction,
+        otbPath,
       });
       setResult(res);
     } catch (e) {
@@ -193,6 +224,38 @@ export function MapConverterScreen() {
           {inputPath && <Check className="h-4 w-4 text-emerald-700 shrink-0" />}
         </button>
 
+        {/* Optional items.otb for an exact, server-specific mapping */}
+        <div
+          className={cn(
+            "w-full flex items-center gap-3 rounded border p-3 transition-colors",
+            otbPath
+              ? "border-emerald-700/40 bg-emerald-700/5"
+              : "border-dashed border-atlas-border bg-atlas-paper",
+          )}
+        >
+          <FileText className="h-5 w-5 shrink-0 text-atlas-ink" />
+          <button
+            type="button"
+            onClick={() => void pickOtb()}
+            className="min-w-0 flex-1 text-left"
+          >
+            <div className="text-sm font-semibold text-atlas-ink">{t("mapconv.otb")}</div>
+            <div className="text-[11px] text-atlas-muted leading-snug truncate">
+              {otbPath ?? t("mapconv.otbHint")}
+            </div>
+          </button>
+          {otbPath && (
+            <button
+              type="button"
+              onClick={clearOtb}
+              title={t("mapconv.otbClear")}
+              className="shrink-0 p-1 rounded text-atlas-muted hover:text-rose-700 hover:bg-rose-700/10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
         {/* Direction segmented control */}
         <div>
           <div className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold mb-1">
@@ -247,6 +310,7 @@ export function MapConverterScreen() {
             <Stat label={t("mapconv.itemsVersion")} value={`${peek.itemsMajor}.${peek.itemsMinor}`} />
             <Stat label={t("mapconv.idsToScan")} value={peek.idsScanned.toLocaleString()} />
             <Stat label={t("mapconv.tableEntries")} value={peek.tableEntries.toLocaleString()} />
+            <Stat label={t("mapconv.source")} value={t(`mapconv.source.${peek.source}`)} />
           </div>
         )}
 
@@ -309,6 +373,7 @@ export function MapConverterScreen() {
             </div>
             <Stat label={t("mapconv.idsChanged")} value={result.idsChanged.toLocaleString()} />
             <Stat label={t("mapconv.idsScanned")} value={result.idsScanned.toLocaleString()} />
+            <Stat label={t("mapconv.source")} value={t(`mapconv.source.${result.source}`)} />
             <div className="pt-1">
               <span className="text-atlas-muted">{t("mapconv.savedTo")}: </span>
               <span className="font-mono break-all text-atlas-ink-soft">{result.outputPath}</span>

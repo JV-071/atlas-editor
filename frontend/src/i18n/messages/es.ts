@@ -311,4 +311,10 @@ export const es: Record<MessageKey, string> = {
   "mapconv.idsScanned": "IDs recorridos",
   "mapconv.savedTo": "Guardado en",
   "mapconv.error": "Error en la conversión",
+  "mapconv.otb": "items.otb (opcional)",
+  "mapconv.otbHint": "Usa el mapeo server↔client exacto de este servidor. Sin él, se usa la tabla integrada de la comunidad.",
+  "mapconv.otbClear": "Limpiar",
+  "mapconv.source": "Fuente del mapeo",
+  "mapconv.source.otb": "Desde items.otb",
+  "mapconv.source.builtin": "Tabla integrada de la comunidad",
 };
