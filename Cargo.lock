@@ -224,6 +224,7 @@ dependencies = [
  "atlas-appearances",
  "atlas-core",
  "atlas-otb",
+ "atlas-otbm",
  "atlas-sprites",
  "atlas-workspace",
  "lzma-rs",
@@ -249,6 +250,16 @@ dependencies = [
 
 [[package]]
 name = "atlas-otb"
+version = "0.1.0"
+dependencies = [
+ "atlas-core",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "atlas-otbm"
 version = "0.1.0"
 dependencies = [
  "atlas-core",

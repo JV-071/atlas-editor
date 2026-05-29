@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/atlas-appearances",
     "crates/atlas-otb",
+    "crates/atlas-otbm",
     "crates/atlas-sprites",
     "crates/atlas-core",
     "crates/atlas-workspace",
@@ -22,6 +23,7 @@ homepage = "https://github.com/atlas-kit/atlas-assets-editor"
 # Internal crates
 atlas-appearances = { path = "crates/atlas-appearances" }
 atlas-otb = { path = "crates/atlas-otb" }
+atlas-otbm = { path = "crates/atlas-otbm" }
 atlas-sprites = { path = "crates/atlas-sprites" }
 atlas-core = { path = "crates/atlas-core" }
 atlas-workspace = { path = "crates/atlas-workspace" }

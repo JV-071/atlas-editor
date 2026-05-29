@@ -117,9 +117,8 @@ export function HomeScreen() {
           icon={<ArrowLeftRight className="h-6 w-6" />}
           title={t("home.tool.mapConverter.title")}
           description={t("home.tool.mapConverter.description")}
-          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
-          onClick={() => {}}
-          disabled
+          badge={{ label: t("home.badge.ready"), tone: "active" }}
+          onClick={() => open("mapConverter")}
         />
         <Tile
           icon={<Map className="h-6 w-6" />}

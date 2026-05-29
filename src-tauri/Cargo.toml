@@ -19,6 +19,7 @@ tauri-build = { workspace = true }
 atlas-core = { workspace = true }
 atlas-appearances = { workspace = true }
 atlas-otb = { workspace = true }
+atlas-otbm = { workspace = true }
 atlas-sprites = { workspace = true }
 atlas-workspace = { workspace = true }
 

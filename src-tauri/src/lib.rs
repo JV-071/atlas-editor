@@ -16,6 +16,7 @@
 
 mod assets;
 mod converter;
+mod mapconv;
 
 use assets::{SharedWorkspace, WorkspaceState};
 use tauri::Manager;
@@ -91,6 +92,9 @@ pub fn run() {
             // Converter
             converter::commands::converter_peek,
             converter::commands::converter_run,
+            // Map Converter
+            mapconv::commands::map_peek,
+            mapconv::commands::map_convert,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
