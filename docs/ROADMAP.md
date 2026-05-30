@@ -22,9 +22,19 @@ pass. Estimates are calendar-light: hours of focused work, not wall-clock.
 
 Total: ~106h. All non-skipped phases shipped to `main`.
 
-The remaining open work (cross-client `.dat`/`.spr` import, Map
-Converter, Map Editor) is tracked outside this roadmap because it is
-not part of the legacy WPF feature port.
+## Beyond the WPF port
+
+Work not part of the legacy feature port, tracked here for visibility:
+
+| Tool / feature                    | Status      |
+|-----------------------------------|-------------|
+| Map Converter (OTBM id translation, OTB-driven or built-in table) | Done |
+| OTB Converter (`.dat`/`.spr` → modern bundle) | Stub — needs the legacy decoders |
+| Map Editor (`.otbm` world editing) | Not started |
+
+The Map Converter shipped on top of a new `atlas-otbm` crate (loss-free
+OTBM node-tree reader/writer + server↔client id converter). The OTB
+Converter and Map Editor remain open.
 
 ## Tech decisions
 

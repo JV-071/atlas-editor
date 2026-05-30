@@ -12,17 +12,23 @@ TFS-derived `items.otb`.
 - **Assets Editor** — browse and edit a modern client assets bundle
   (`appearances.dat` + sprite sheets) and the optional `items.otb`
   server catalog, with undo/redo, cross-reference badges, sprite
-  editing, GIF/PNG export, and `.obd` cross-client import.
+  editing, sprite-animation timing, NPC trade data, GIF/PNG export,
+  and `.obd` cross-client import.
+- **Map Converter** — translate item IDs in `.otbm` maps between
+  server numbering (TFS-style `items.otb`) and client numbering
+  (OTBR/Nostalrius), in either direction. Point it at your server's
+  `items.otb` for an exact mapping, or fall back to the built-in
+  community table.
 - **OTB Converter** — turn a legacy server bundle (`items.otb` plus
   Tibia 7.x–10.x `.dat`/`.spr`) into a modern Tibia 12+ assets
   folder. _Coming soon._
-- **Map Converter** — convert item IDs in `.otbm` maps between client
-  IDs and server IDs. _Coming soon._
 - **Map Editor** — load and edit `.otbm` worlds. _Coming soon._
 
-The Assets Editor is the only tool that is shippable today. The
-others are placeholders in the launcher while the underlying parsers
-catch up.
+The Assets Editor and Map Converter are shippable today. The OTB
+Converter and Map Editor are placeholders in the launcher while the
+underlying parsers catch up.
+
+Every tool is localized in English, Portuguese (BR), and Spanish.
 
 ## Ecosystem
 

@@ -1,8 +1,9 @@
 # Architecture
 
-Atlas Assets Editor is a desktop suite of three tools bundled into a
-single Tauri 2 app. The backend is a Rust workspace (`crates/` plus
-`src-tauri/`); the frontend is Vite + React + Tailwind. The tools
+Atlas Assets Editor is a desktop suite of tools bundled into a single
+Tauri 2 app (two shippable today — Assets Editor and Map Converter —
+plus two placeholders). The backend is a Rust workspace (`crates/`
+plus `src-tauri/`); the frontend is Vite + React + Tailwind. The tools
 share the same core crates and the same UI shell — they are different
 screens in one binary, not different binaries.
 
@@ -16,8 +17,8 @@ screens in one binary, not different binaries.
                              │ Tauri IPC (commands + events)
 ┌────────────────────────────▼───────────────────────────────────────┐
 │                     Tauri backend (`src-tauri/`)                   │
-│       assets/ · converter/ · (map/) — thin command shims,          │
-│       plugin wiring, per-tool workspace state                      │
+│   assets/ · converter/ · mapconv/ — thin command shims,            │
+│   plugin wiring, per-tool workspace state                          │
 └──┬─────────────────┬──────────────────┬──────────────────┬─────────┘
    │                 │                  │                  │
 ┌──▼──────────┐ ┌────▼──────────┐ ┌─────▼─────────┐ ┌──────▼────────┐
@@ -28,12 +29,12 @@ screens in one binary, not different binaries.
 │ errors,     │ │ + sprite info │ │   ext attrs)  │ │ sheet writer  │
 │ categories  │ │               │ │               │ │               │
 └─────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
-                                                    ┌───────────────┐
-                                                    │ atlas-        │
-                                                    │ workspace     │
-                                                    │ Cross-ref     │
-                                                    │ OTB ↔ proto   │
-                                                    └───────────────┘
+                ┌───────────────┐ ┌───────────────┐
+                │ atlas-        │ │ atlas-otbm    │
+                │ workspace     │ │ OTBM tree     │
+                │ Cross-ref     │ │ read/write +  │
+                │ OTB ↔ proto   │ │ id converter  │
+                └───────────────┘ └───────────────┘
 ```
 
 ## The three tools
@@ -41,21 +42,38 @@ screens in one binary, not different binaries.
 | Tool                | Status      | Backend module           | Frontend module                |
 |---------------------|-------------|--------------------------|--------------------------------|
 | **Assets Editor**   | Usable      | `src-tauri/src/assets/`  | `frontend/src/tools/assets/`   |
+| **Map Converter**   | Usable      | `src-tauri/src/mapconv/` | `frontend/src/tools/mapconv/`  |
 | **OTB Converter**   | Coming soon | `src-tauri/src/converter/` (stub) | `frontend/src/tools/converter/`|
-| **Map Converter**   | Coming soon | not started              | not started                    |
 | **Map Editor**      | Coming soon | not started              | not started                    |
 
 The HomeScreen is the launcher; the active tool is tracked by a
 `Tool` enum in `frontend/src/appStore.ts`. Each tool owns its own
 backend state behind a `tauri::State<...>` wrapper and exposes its
-commands with a tool prefix (`assets_*`, `converter_*`).
+commands with a tool prefix (`assets_*`, `converter_*`, `map_*`).
+
+## Map Converter: OTBM id translation
+
+The Map Converter rewrites every item id inside an `.otbm` map between
+server and client numbering. `atlas-otbm` parses the OTBM node tree
+**losslessly** — each node is kept as its de-escaped raw body plus its
+children and re-escaped on write, so a round-trip is byte-identical
+except for the ids we deliberately patch (inline `OTBM_ITEM` ids and
+the `OTBM_ATTR_ITEM` ground id on tiles/house-tiles). Unknown attribute
+kinds are never re-interpreted, so newer OTBM revisions pass through
+intact.
+
+The translation table is an `IdMap`. It is either derived from a
+specific server's `items.otb` (each item carries both a `server_id` and
+a `client_id`) for an exact mapping, or the embedded community table
+(~46k pairs per direction, shipped as CSV and parsed once) when no OTB
+is supplied. Ids absent from the table pass through unchanged.
 
 ## Why a crate per format
 
-- **Crate per responsibility.** `atlas-appearances`, `atlas-otb`, and
-  `atlas-sprites` parse one file family each. They are independently
-  testable and reusable; a server (or a CLI tool) can depend on just
-  the parsers without pulling the Tauri shell.
+- **Crate per responsibility.** `atlas-appearances`, `atlas-otb`,
+  `atlas-otbm`, and `atlas-sprites` parse one file family each. They
+  are independently testable and reusable; a server (or a CLI tool)
+  can depend on just the parsers without pulling the Tauri shell.
 - **Thin Tauri layer.** `src-tauri/` contains command shims, plugin
   wiring, and per-tool workspace state — no parsing logic. This keeps
   the IPC surface area small and easy to audit.
