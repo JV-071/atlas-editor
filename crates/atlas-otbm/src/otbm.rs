@@ -331,9 +331,22 @@ mod tests {
         }
 
         // Item node: [0x06][id=372]
-        let item = node(&[OTBM_ITEM, 372u16.to_le_bytes()[0], 372u16.to_le_bytes()[1]], vec![]);
+        let item = node(
+            &[OTBM_ITEM, 372u16.to_le_bytes()[0], 372u16.to_le_bytes()[1]],
+            vec![],
+        );
         // Tile node: [0x05][x=1][y=2][ATTR_TILE_FLAGS + 4 bytes][ATTR_ITEM + ground=371], child item
-        let mut tile_body = vec![OTBM_TILE, 1, 2, OTBM_ATTR_TILE_FLAGS, 0, 0, 0, 0, OTBM_ATTR_ITEM];
+        let mut tile_body = vec![
+            OTBM_TILE,
+            1,
+            2,
+            OTBM_ATTR_TILE_FLAGS,
+            0,
+            0,
+            0,
+            0,
+            OTBM_ATTR_ITEM,
+        ];
         tile_body.extend_from_slice(&371u16.to_le_bytes());
         let tile = node(&tile_body, vec![item]);
         // Tile area: [0x04][x:u16][y:u16][z:u8]
@@ -413,6 +426,9 @@ mod tests {
     #[test]
     fn rejects_bad_magic() {
         let bytes = vec![0xAA, 0xBB, 0xCC, 0xDD, NODE_INIT, 0x00, NODE_TERM];
-        assert!(matches!(OtbmMap::parse(&bytes), Err(OtbmError::BadMagic(_))));
+        assert!(matches!(
+            OtbmMap::parse(&bytes),
+            Err(OtbmError::BadMagic(_))
+        ));
     }
 }

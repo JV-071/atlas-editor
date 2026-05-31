@@ -79,10 +79,7 @@ impl IdMap {
     /// id. Identity pairs (`from == to`) are dropped so [`Self::len`]
     /// reflects only the ids that actually move.
     pub fn from_pairs(pairs: impl IntoIterator<Item = (u16, u16)>) -> Self {
-        let table = pairs
-            .into_iter()
-            .filter(|(from, to)| from != to)
-            .collect();
+        let table = pairs.into_iter().filter(|(from, to)| from != to).collect();
         Self { table }
     }
 

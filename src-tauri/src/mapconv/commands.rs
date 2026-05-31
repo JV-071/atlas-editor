@@ -50,13 +50,16 @@ fn build_id_map(
             // Each OTB item carries both ids; pair them in the requested
             // direction. Items missing either id can't contribute a
             // mapping and are skipped.
-            let pairs = otb.items.iter().filter_map(|i| match (i.server_id, i.client_id) {
-                (Some(server), Some(client)) => Some(match direction {
-                    ConvertDirection::ServerToClient => (server, client),
-                    ConvertDirection::ClientToServer => (client, server),
-                }),
-                _ => None,
-            });
+            let pairs = otb
+                .items
+                .iter()
+                .filter_map(|i| match (i.server_id, i.client_id) {
+                    (Some(server), Some(client)) => Some(match direction {
+                        ConvertDirection::ServerToClient => (server, client),
+                        ConvertDirection::ClientToServer => (client, server),
+                    }),
+                    _ => None,
+                });
             Ok((IdMap::from_pairs(pairs), MapSource::Otb))
         }
         _ => Ok((IdMap::builtin(direction.into()), MapSource::Builtin)),
