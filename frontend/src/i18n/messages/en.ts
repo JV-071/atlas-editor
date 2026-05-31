@@ -355,6 +355,7 @@ export const en = {
   "mapedit.floorUp": "Floor up",
   "mapedit.floorDown": "Floor down",
   "mapedit.error": "Could not render the map",
+  "mapedit.loading": "Loading map…",
 } as const;
 
 export type MessageKey = keyof typeof en;

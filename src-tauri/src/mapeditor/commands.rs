@@ -5,10 +5,24 @@ use std::collections::HashMap;
 use atlas_appearances::{AppearanceInfo, FixedFrameGroup};
 use image::{imageops, RgbaImage};
 use serde::Serialize;
-use tauri::State;
+use tauri::{Emitter, State, Window};
 
 use super::{MapEditorState, SharedMapEditor};
 use crate::assets::SharedWorkspace;
+
+/// Progress event payload emitted on `mapOpenProgress` during a slow
+/// [`map_open`]. `percent` is 0–100; `phase` is a stable key the UI can
+/// localize.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenProgress {
+    phase: &'static str,
+    percent: u8,
+}
+
+fn emit_progress(window: &Window, phase: &'static str, percent: u8) {
+    let _ = window.emit("mapOpenProgress", OpenProgress { phase, percent });
+}
 
 /// One tile = 32×32 px in the rendered region.
 const TILE_PX: u32 = 32;
@@ -35,21 +49,51 @@ pub struct MapInfo {
 }
 
 /// Parse an `.otbm` and index its tiles by floor. Replaces any
-/// previously-open map.
+/// previously-open map. Emits `mapOpenProgress` events (0–100%) so the UI
+/// can show a progress bar, since parsing a large world takes a moment.
 #[tauri::command]
-pub fn map_open(path: String, state: State<'_, SharedMapEditor>) -> Result<MapInfo, String> {
+pub fn map_open(
+    path: String,
+    window: Window,
+    state: State<'_, SharedMapEditor>,
+) -> Result<MapInfo, String> {
+    emit_progress(&window, "read", 5);
+    // read_file does the I/O + the recursive node-tree parse — the bulk of
+    // the cost on a big map.
     let map = atlas_otbm::read_file(&path).map_err(|e| e.to_string())?;
     let header = map.header().unwrap_or_default();
-    let bounds = map.bounds();
+    emit_progress(&window, "parsed", 45);
 
+    // Decode tiles ONCE, then derive both the floor index and the bounds
+    // from the same Vec (the old code walked the tree twice — once for
+    // tiles, once for bounds).
+    let tiles = map.tiles();
+    emit_progress(&window, "decoded", 60);
+
+    let total = tiles.len().max(1);
+    let step = (total / 20).max(1); // ~20 progress ticks across 60→95%
     let mut floors: HashMap<u8, HashMap<(u16, u16), Vec<u16>>> = HashMap::new();
-    let mut tile_count = 0u32;
-    for tile in map.tiles() {
+    let mut floor_set = std::collections::BTreeSet::new();
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (u16::MAX, u16::MAX, 0u16, 0u16);
+    for (i, tile) in tiles.into_iter().enumerate() {
+        min_x = min_x.min(tile.x);
+        min_y = min_y.min(tile.y);
+        max_x = max_x.max(tile.x);
+        max_y = max_y.max(tile.y);
+        floor_set.insert(tile.z);
         floors
             .entry(tile.z)
             .or_default()
             .insert((tile.x, tile.y), tile.items);
-        tile_count += 1;
+        if i % step == 0 {
+            emit_progress(&window, "index", 60 + (i * 35 / total) as u8);
+        }
+    }
+    let tile_count = total as u32;
+    if floors.is_empty() {
+        // No tiles: keep bounds at a sane zero.
+        min_x = 0;
+        min_y = 0;
     }
 
     let info = MapInfo {
@@ -57,19 +101,22 @@ pub fn map_open(path: String, state: State<'_, SharedMapEditor>) -> Result<MapIn
         width: header.width,
         height: header.height,
         otbm_version: header.version,
-        min_x: bounds.min_x,
-        min_y: bounds.min_y,
-        max_x: bounds.max_x,
-        max_y: bounds.max_y,
-        floors: bounds.floors.clone(),
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+        floors: floor_set.into_iter().collect(),
         tile_count,
     };
 
-    let mut guard = state.lock().map_err(|e| e.to_string())?;
-    *guard = MapEditorState {
-        floors,
-        sprite_index: None,
-    };
+    {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        *guard = MapEditorState {
+            floors,
+            sprite_index: None,
+        };
+    }
+    emit_progress(&window, "done", 100);
 
     Ok(info)
 }

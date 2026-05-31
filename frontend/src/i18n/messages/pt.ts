@@ -350,4 +350,5 @@ export const pt: Record<MessageKey, string> = {
   "mapedit.floorUp": "Subir andar",
   "mapedit.floorDown": "Descer andar",
   "mapedit.error": "Não foi possível renderizar o mapa",
+  "mapedit.loading": "Carregando mapa…",
 };

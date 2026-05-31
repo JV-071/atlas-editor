@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
@@ -55,6 +56,7 @@ export function MapScreen() {
 
   const [assets, setAssets] = useState<AssetsDirInfo | null>(null);
   const [info, setInfo] = useState<MapInfo | null>(null);
+  const [loading, setLoading] = useState<number | null>(null);
   const [floor, setFloor] = useState(7);
   const [zoom, setZoom] = useState(1);
   // Camera = the map tile shown at the viewport's top-left.
@@ -132,6 +134,12 @@ export function MapScreen() {
     const path = Array.isArray(sel) ? sel[0] : sel;
     if (!path) return;
     setError(null);
+    setLoading(0);
+    // Backend emits 0–100% as it parses + indexes the world.
+    const unlisten = await listen<{ phase: string; percent: number }>(
+      "mapOpenProgress",
+      (e) => setLoading(e.payload.percent),
+    );
     try {
       const mi = await invoke<MapInfo>("map_open", { path });
       setInfo(mi);
@@ -146,6 +154,9 @@ export function MapScreen() {
     } catch (e) {
       setError(String(e));
       setInfo(null);
+    } finally {
+      unlisten();
+      setLoading(null);
     }
   }
 
@@ -286,6 +297,27 @@ export function MapScreen() {
           <LanguageSwitcher />
         </div>
       </header>
+
+      {/* Loading overlay with a real percentage from backend progress. */}
+      {loading !== null && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-atlas-ink/40 backdrop-blur-sm">
+          <div className="w-72 rounded-lg border border-atlas-border bg-atlas-paper p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-atlas-ink inline-flex items-center gap-1.5">
+                <MapIcon className="h-4 w-4" />
+                {t("mapedit.loading")}
+              </span>
+              <span className="text-sm font-mono tabular-nums text-atlas-ink">{loading}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-atlas-sand overflow-hidden">
+              <div
+                className="h-full bg-atlas-ink transition-[width] duration-200 ease-out"
+                style={{ width: `${loading}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {!info ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
