@@ -126,9 +126,8 @@ export function HomeScreen() {
           icon={<Map className="h-6 w-6" />}
           title={t("home.tool.mapEditor.title")}
           description={t("home.tool.mapEditor.description")}
-          badge={{ label: t("home.badge.comingSoon"), tone: "muted" }}
-          onClick={() => {}}
-          disabled
+          badge={{ label: t("home.badge.beta"), tone: "active" }}
+          onClick={() => open("map")}
         />
       </div>
 

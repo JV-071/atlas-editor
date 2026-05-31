@@ -331,6 +331,23 @@ export const en = {
   "update.installing": "Installing…",
   "update.restarting": "Restarting…",
   "update.error": "Update failed",
+
+  "mapedit.title": "Map Editor",
+  "mapedit.subtitle": "Open an .otbm and browse its floors. Read-only for now.",
+  "mapedit.openMap": "Open .otbm map",
+  "mapedit.needAssets": "Open an assets bundle in the Assets Editor first — the map needs its sprites to render.",
+  "mapedit.floor": "Floor",
+  "mapedit.position": "Position",
+  "mapedit.tiles": "tiles",
+  "mapedit.floors": "floors",
+  "mapedit.tileItems": "Tile items",
+  "mapedit.noTile": "Click a tile to inspect its items.",
+  "mapedit.emptyTile": "No items on this tile.",
+  "mapedit.zoomIn": "Zoom in",
+  "mapedit.zoomOut": "Zoom out",
+  "mapedit.floorUp": "Floor up",
+  "mapedit.floorDown": "Floor down",
+  "mapedit.error": "Could not render the map",
 } as const;
 
 export type MessageKey = keyof typeof en;
