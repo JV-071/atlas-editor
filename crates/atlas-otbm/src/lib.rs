@@ -16,7 +16,7 @@ mod otbm;
 
 pub use error::{OtbmError, Result};
 pub use idmap::{Direction, IdMap};
-pub use otbm::{MapHeader, OtbmMap};
+pub use otbm::{MapBounds, MapHeader, MapTile, OtbmMap};
 
 /// Summary of a single file conversion, returned to callers (the Tauri
 /// command surfaces this to the UI).

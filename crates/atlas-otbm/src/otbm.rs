@@ -19,8 +19,10 @@ const NODE_ESC: u8 = 0xFD;
 const NODE_INIT: u8 = 0xFE;
 const NODE_TERM: u8 = 0xFF;
 
-// Node type bytes we touch during conversion.
+// Node type bytes we touch during conversion / tile extraction.
 const OTBM_MAP_HEADER: u8 = 0x00;
+const OTBM_MAP_DATA: u8 = 0x02;
+const OTBM_TILE_AREA: u8 = 0x04;
 const OTBM_TILE: u8 = 0x05;
 const OTBM_ITEM: u8 = 0x06;
 const OTBM_HOUSETILE: u8 = 0x0E;
@@ -73,6 +75,27 @@ pub struct MapHeader {
     pub height: u16,
     pub items_major: u32,
     pub items_minor: u32,
+}
+
+/// A single tile decoded from the map: absolute coordinates plus the
+/// item-id stack sitting on it (ground first, then stacked items).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapTile {
+    pub x: u16,
+    pub y: u16,
+    pub z: u8,
+    pub items: Vec<u16>,
+}
+
+/// Map extent: the tight bounding box over all tiles plus the sorted set
+/// of populated floors (`z`, 0 = top, 15 = bottom in OTBM convention).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MapBounds {
+    pub min_x: u16,
+    pub min_y: u16,
+    pub max_x: u16,
+    pub max_y: u16,
+    pub floors: Vec<u8>,
 }
 
 fn deescape(raw: &[u8]) -> Vec<u8> {
@@ -217,6 +240,83 @@ impl OtbmMap {
         let mut count = 0;
         count_node(&self.root, &mut count);
         count
+    }
+
+    /// Decode the map into a flat list of tiles with absolute coordinates
+    /// and their item-id stack (ground first, then the tile's direct
+    /// items in order). Container contents are intentionally not descended
+    /// — for rendering and inspection we only need the items sitting on
+    /// the tile itself.
+    pub fn tiles(&self) -> Vec<MapTile> {
+        let mut tiles = Vec::new();
+        // Map data → tile areas → tiles. Tolerate the data node being the
+        // root or one of its children.
+        let map_data = self
+            .root
+            .children
+            .iter()
+            .find(|n| n.node_type() == Some(OTBM_MAP_DATA));
+        let Some(map_data) = map_data else {
+            return tiles;
+        };
+        for area in &map_data.children {
+            if area.node_type() != Some(OTBM_TILE_AREA) || area.body.len() < 6 {
+                continue;
+            }
+            let base_x = u16::from_le_bytes([area.body[1], area.body[2]]);
+            let base_y = u16::from_le_bytes([area.body[3], area.body[4]]);
+            let z = area.body[5];
+            for tile in &area.children {
+                let (attr_start, is_tile) = match tile.node_type() {
+                    Some(OTBM_TILE) => (3, true),
+                    Some(OTBM_HOUSETILE) => (7, true),
+                    _ => (0, false),
+                };
+                if !is_tile || tile.body.len() < 3 {
+                    continue;
+                }
+                let x = base_x.wrapping_add(tile.body[1] as u16);
+                let y = base_y.wrapping_add(tile.body[2] as u16);
+                let mut items = Vec::new();
+                // Ground item id (OTBM_ATTR_ITEM), if present.
+                if let Some(off) = find_ground_offset(&tile.body, attr_start) {
+                    items.push(u16::from_le_bytes([tile.body[off], tile.body[off + 1]]));
+                }
+                // Stacked items are child OTBM_ITEM nodes.
+                for item in &tile.children {
+                    if item.node_type() == Some(OTBM_ITEM) && item.body.len() >= 3 {
+                        items.push(u16::from_le_bytes([item.body[1], item.body[2]]));
+                    }
+                }
+                tiles.push(MapTile { x, y, z, items });
+            }
+        }
+        tiles
+    }
+
+    /// Bounding box + populated floors derived from [`Self::tiles`]. Cheap
+    /// enough for a one-shot call when a map is opened.
+    pub fn bounds(&self) -> MapBounds {
+        let mut bounds = MapBounds::default();
+        let mut floors = std::collections::BTreeSet::new();
+        let mut any = false;
+        for t in self.tiles() {
+            if !any {
+                bounds.min_x = t.x;
+                bounds.max_x = t.x;
+                bounds.min_y = t.y;
+                bounds.max_y = t.y;
+                any = true;
+            } else {
+                bounds.min_x = bounds.min_x.min(t.x);
+                bounds.max_x = bounds.max_x.max(t.x);
+                bounds.min_y = bounds.min_y.min(t.y);
+                bounds.max_y = bounds.max_y.max(t.y);
+            }
+            floors.insert(t.z);
+        }
+        bounds.floors = floors.into_iter().collect();
+        bounds
     }
 }
 
@@ -390,6 +490,26 @@ mod tests {
         let map = OtbmMap::parse(&sample_otbm()).unwrap();
         // One inline item id + one tile ground id.
         assert_eq!(map.count_ids(), 2);
+    }
+
+    #[test]
+    fn tiles_decode_with_absolute_coords_and_stack() {
+        let map = OtbmMap::parse(&sample_otbm()).unwrap();
+        let tiles = map.tiles();
+        assert_eq!(tiles.len(), 1);
+        let t = &tiles[0];
+        // Tile area base is (0,0,7); tile dx/dy = (1,2).
+        assert_eq!((t.x, t.y, t.z), (1, 2, 7));
+        // Ground 371 first, then the stacked item 372.
+        assert_eq!(t.items, vec![371, 372]);
+    }
+
+    #[test]
+    fn bounds_cover_tiles_and_floor() {
+        let map = OtbmMap::parse(&sample_otbm()).unwrap();
+        let b = map.bounds();
+        assert_eq!((b.min_x, b.min_y, b.max_x, b.max_y), (1, 2, 1, 2));
+        assert_eq!(b.floors, vec![7]);
     }
 
     #[test]
