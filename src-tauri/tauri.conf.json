@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -40,5 +41,13 @@
     "category": "DeveloperTool",
     "shortDescription": "Tibia 15.x asset suite",
     "longDescription": "Atlas Editor bundles three tools for Tibia 12+/15.x: an assets editor, a map editor (coming soon), and a converter from legacy items.otb plus client files into modern assets bundles."
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/atlas-kit/atlas-editor/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg4RjZCMTUzRDAyNzk2RApSV1J0ZVFJOUZXdVBDQno1K0xpSTFwT2Flemd3NnpKNk00NXlCdHE4MVV4aThJOXU2c0E1WXhMUQo="
+    }
   }
 }

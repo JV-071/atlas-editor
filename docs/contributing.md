@@ -74,10 +74,38 @@ The frontend footer version is injected from `frontend/package.json`
 at build time (Vite `define`), so it can never drift from the release —
 just keep package.json in lockstep with the other two manifests.
 
-Builds are unsigned by default. If/when code signing is set up, add
-the secrets the action documents (`APPLE_CERTIFICATE`,
-`TAURI_PRIVATE_KEY`, `WINDOWS_CERTIFICATE`, etc.) and pass them
-through `env:` in the release workflow.
+Installer code signing (Apple/Windows certificates) is not set up;
+builds are distributed unsigned. That is separate from updater signing
+below.
+
+## In-app updates
+
+The app self-updates via `tauri-plugin-updater`. On launch it polls the
+latest release's `latest.json` and, if a newer **signed** build exists,
+offers a one-click download-install-relaunch (see
+`frontend/src/UpdateBanner.tsx`).
+
+For a release to be updatable, its artifacts must be signed. The
+keypair was generated once with `cargo tauri signer generate`; the
+**public** key lives in `tauri.conf.json` (`plugins.updater.pubkey`).
+The **private** key must be added to the repo as two GitHub Actions
+secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | full contents of the generated `.key` file |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | the key's password (empty string if none) |
+
+`release.yml` passes both to `tauri-action`, which signs every
+installer and uploads `latest.json` to the release. Without the
+secrets the build still succeeds but ships no updater manifest, so
+clients won't see the update.
+
+Note: the updater only works **forward** — a release made before the
+updater existed (≤ v0.2.1) can't auto-update; users install the first
+updater-enabled build manually, and every release after that updates
+in place. Losing the private key means cutting a new keypair and a
+manual reinstall for everyone, so keep it backed up.
 
 ## License
 

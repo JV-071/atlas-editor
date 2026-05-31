@@ -322,6 +322,15 @@ export const en = {
   "mapconv.source": "Mapping source",
   "mapconv.source.otb": "From items.otb",
   "mapconv.source.builtin": "Built-in community table",
+
+  "update.available": "Update available",
+  "update.newVersion": "Version {version} is available (you have {current}).",
+  "update.install": "Update now",
+  "update.later": "Later",
+  "update.downloading": "Downloading…",
+  "update.installing": "Installing…",
+  "update.restarting": "Restarting…",
+  "update.error": "Update failed",
 } as const;
 
 export type MessageKey = keyof typeof en;

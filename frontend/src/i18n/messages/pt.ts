@@ -317,4 +317,13 @@ export const pt: Record<MessageKey, string> = {
   "mapconv.source": "Fonte do mapeamento",
   "mapconv.source.otb": "Do items.otb",
   "mapconv.source.builtin": "Tabela embutida da comunidade",
+
+  "update.available": "Atualização disponível",
+  "update.newVersion": "A versão {version} está disponível (você tem a {current}).",
+  "update.install": "Atualizar agora",
+  "update.later": "Depois",
+  "update.downloading": "Baixando…",
+  "update.installing": "Instalando…",
+  "update.restarting": "Reiniciando…",
+  "update.error": "Falha na atualização",
 };

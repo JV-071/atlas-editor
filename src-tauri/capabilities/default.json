@@ -11,6 +11,8 @@
     "core:window:allow-center",
     "opener:default",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    "updater:default",
+    "process:default"
   ]
 }

@@ -116,6 +116,17 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signing. With `bundle.createUpdaterArtifacts: true` in
+          # tauri.conf.json, tauri-action signs each installer and uploads a
+          # `latest.json` manifest to the release — that's the file the
+          # in-app updater polls. Set these two repository secrets:
+          #   TAURI_SIGNING_PRIVATE_KEY           — contents of the .key file
+          #     produced by `cargo tauri signer generate`
+          #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — its password ("" if none)
+          # If the secrets are absent the build still runs; it just won't
+          # emit signed updater artifacts.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
