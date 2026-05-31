@@ -36,6 +36,7 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+image = { workspace = true }
 
 [dev-dependencies]
 lzma-rs = { workspace = true }

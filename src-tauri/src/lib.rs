@@ -17,6 +17,7 @@
 mod assets;
 mod converter;
 mod mapconv;
+mod mapeditor;
 
 use assets::{SharedWorkspace, WorkspaceState};
 use tauri::Manager;
@@ -36,6 +37,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(SharedWorkspace::new(WorkspaceState::default()))
+        .manage(mapeditor::SharedMapEditor::default())
         .setup(|app| {
             // app_config_dir requires the runtime AppHandle, so MRU
             // hydration cannot happen at `manage()` time.
@@ -97,6 +99,10 @@ pub fn run() {
             // Map Converter
             mapconv::commands::map_peek,
             mapconv::commands::map_convert,
+            // Map Editor
+            mapeditor::commands::map_open,
+            mapeditor::commands::map_render_region,
+            mapeditor::commands::map_tile_items,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
