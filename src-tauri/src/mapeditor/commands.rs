@@ -185,6 +185,16 @@ pub fn map_render_region(
     Ok(tauri::ipc::Response::new(bytes.into_inner()))
 }
 
+/// Drop the cached `client_id → sprite` index so the next render rebuilds
+/// it. Call this after the assets bundle changes (a new bundle means new
+/// appearances, so the cached sprite ids are stale).
+#[tauri::command]
+pub fn map_invalidate_sprites(state: State<'_, SharedMapEditor>) -> Result<(), String> {
+    let mut guard = state.lock().map_err(|e| e.to_string())?;
+    guard.sprite_index = None;
+    Ok(())
+}
+
 /// Inspect the item-id stack on a single tile (for the click-to-inspect
 /// panel). Empty when the tile has no items or no map is open.
 #[tauri::command]

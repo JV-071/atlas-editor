@@ -4,14 +4,18 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
   ChevronDown,
   ChevronUp,
+  FolderOpen,
+  ImagePlus,
   Map as MapIcon,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 
 import { useApp } from "../../appStore";
+import { cn } from "../../shared/utils";
 import { useT } from "../../i18n";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 
@@ -33,6 +37,12 @@ interface MapInfo {
   tileCount: number;
 }
 
+interface AssetsDirInfo {
+  path: string;
+  sheetCount: number;
+  spriteIdRange: [number, number] | null;
+}
+
 function basename(path: string): string {
   const cleaned = path.replace(/\\/g, "/");
   const i = cleaned.lastIndexOf("/");
@@ -43,6 +53,7 @@ export function MapScreen() {
   const setTool = useApp((s) => s.setTool);
   const t = useT();
 
+  const [assets, setAssets] = useState<AssetsDirInfo | null>(null);
   const [info, setInfo] = useState<MapInfo | null>(null);
   const [floor, setFloor] = useState(7);
   const [zoom, setZoom] = useState(1);
@@ -81,6 +92,35 @@ export function MapScreen() {
     setViewport({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, [info]);
+
+  // On mount, reflect whatever assets bundle is already loaded app-wide
+  // (the Assets Editor and Map Editor share one workspace).
+  useEffect(() => {
+    void invoke<AssetsDirInfo | null>("get_assets_dir_info")
+      .then((a) => setAssets(a))
+      .catch(() => {});
+  }, []);
+
+  async function openAssets() {
+    const sel = await openDialog({
+      title: t("mapedit.openAssets"),
+      multiple: false,
+      directory: true,
+    });
+    const path = Array.isArray(sel) ? sel[0] : sel;
+    if (!path) return;
+    setError(null);
+    try {
+      // Reuse the Assets Editor's bundle loader (sets the shared atlas +
+      // appearances), then drop the map's stale sprite-id cache.
+      const result = await invoke<{ assets: AssetsDirInfo }>("open_assets_bundle", { path });
+      setAssets(result.assets);
+      await invoke("map_invalidate_sprites").catch(() => {});
+      void renderRegion();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   async function openMap() {
     const sel = await openDialog({
@@ -226,22 +266,75 @@ export function MapScreen() {
             {t("mapedit.floors")}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
+          {info && (
+            <button
+              type="button"
+              onClick={() => void openAssets()}
+              title={assets?.path ?? t("mapedit.openAssets")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] border",
+                assets
+                  ? "border-emerald-700/40 text-emerald-800 hover:bg-emerald-700/10"
+                  : "border-amber-600/50 text-amber-700 hover:bg-amber-600/10",
+              )}
+            >
+              <FolderOpen className="h-3 w-3" />
+              {assets ? t("mapedit.changeAssets") : t("mapedit.openAssets")}
+            </button>
+          )}
           <LanguageSwitcher />
         </div>
       </header>
 
       {!info ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
           <MapIcon className="h-10 w-10 text-atlas-muted" />
-          <p className="text-sm text-atlas-muted max-w-md">{t("mapedit.subtitle")}</p>
-          <button
-            type="button"
-            onClick={() => void openMap()}
-            className="rounded px-4 py-2 text-sm font-semibold bg-atlas-ink text-atlas-cream hover:bg-atlas-ink-soft"
-          >
-            {t("mapedit.openMap")}
-          </button>
+          <p className="text-sm text-atlas-muted max-w-md text-center">{t("mapedit.subtitle")}</p>
+
+          <div className="w-full max-w-md space-y-2">
+            {/* Step 1 — assets bundle (required for sprites) */}
+            <button
+              type="button"
+              onClick={() => void openAssets()}
+              className={cn(
+                "w-full flex items-center gap-3 rounded border p-3 text-left transition-colors",
+                assets
+                  ? "border-emerald-700/40 bg-emerald-700/5 hover:bg-emerald-700/10"
+                  : "border-atlas-ink bg-atlas-paper hover:bg-atlas-sand",
+              )}
+            >
+              <ImagePlus className="h-5 w-5 shrink-0 text-atlas-ink" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-atlas-ink">{t("mapedit.step1")}</div>
+                <div className="text-[11px] text-atlas-muted leading-snug truncate">
+                  {assets ? assets.path : t("mapedit.step1hint")}
+                </div>
+              </div>
+              {assets && <Check className="h-4 w-4 text-emerald-700 shrink-0" />}
+            </button>
+
+            {/* Step 2 — open the map (needs step 1 first) */}
+            <button
+              type="button"
+              onClick={() => void openMap()}
+              disabled={!assets}
+              className={cn(
+                "w-full flex items-center gap-3 rounded border p-3 text-left transition-colors",
+                "border-atlas-border bg-atlas-paper hover:border-atlas-ink",
+                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-atlas-border",
+              )}
+            >
+              <MapIcon className="h-5 w-5 shrink-0 text-atlas-ink" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-atlas-ink">{t("mapedit.step2")}</div>
+                <div className="text-[11px] text-atlas-muted leading-snug truncate">
+                  {t("mapedit.step2hint")}
+                </div>
+              </div>
+            </button>
+          </div>
+
           {error && (
             <div className="flex items-start gap-2 rounded border border-rose-600/50 bg-rose-600/5 p-3 text-xs max-w-md">
               <AlertTriangle className="h-4 w-4 text-rose-700 shrink-0 mt-0.5" />
