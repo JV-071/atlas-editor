@@ -262,7 +262,15 @@ pub fn map_render_chunk(
 ) -> Result<tauri::ipc::Response, String> {
     let x0 = (cx * CHUNK_TILES).min(u16::MAX as u32) as u16;
     let y0 = (cy * CHUNK_TILES).min(u16::MAX as u32) as u16;
-    let png = render_region_png(z, x0, y0, CHUNK_TILES, CHUNK_TILES, &map_state, &assets_state)?;
+    let png = render_region_png(
+        z,
+        x0,
+        y0,
+        CHUNK_TILES,
+        CHUNK_TILES,
+        &map_state,
+        &assets_state,
+    )?;
     Ok(tauri::ipc::Response::new(png))
 }
 
