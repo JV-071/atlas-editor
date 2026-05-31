@@ -8,7 +8,9 @@ import { resizeWindow } from "./tools/assets/store";
 import { useT } from "./i18n";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 
-const APP_VERSION = "0.1.0";
+// Injected from package.json by Vite (see vite.config.ts `define`).
+declare const __APP_VERSION__: string;
+const APP_VERSION = __APP_VERSION__;
 
 interface TileProps {
   icon: React.ReactNode;

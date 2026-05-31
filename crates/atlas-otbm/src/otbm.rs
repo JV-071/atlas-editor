@@ -236,16 +236,8 @@ fn convert_node(node: &mut Node, map: &IdMap, changed: &mut u32) {
 fn count_node(node: &Node, count: &mut u32) {
     match node.node_type() {
         Some(OTBM_ITEM) => *count += 1,
-        Some(OTBM_TILE) => {
-            if find_ground_offset(&node.body, 3).is_some() {
-                *count += 1;
-            }
-        }
-        Some(OTBM_HOUSETILE) => {
-            if find_ground_offset(&node.body, 7).is_some() {
-                *count += 1;
-            }
-        }
+        Some(OTBM_TILE) if find_ground_offset(&node.body, 3).is_some() => *count += 1,
+        Some(OTBM_HOUSETILE) if find_ground_offset(&node.body, 7).is_some() => *count += 1,
         _ => {}
     }
     for child in &node.children {
