@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -21,9 +21,11 @@ import { useT } from "../../i18n";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 
 const TILE = 32;
-/// Extra tiles rendered around the viewport so a drag reveals real
-/// pixels at the edges before the region re-renders on release.
-const PAD = 6;
+/// Must match CHUNK_TILES on the Rust side.
+const CHUNK = 16;
+const CHUNK_PX = CHUNK * TILE;
+/// Cap the live chunk cache; far chunks are evicted to bound memory.
+const MAX_CHUNKS = 200;
 
 interface MapInfo {
   path: string;
@@ -63,44 +65,53 @@ export function MapScreen() {
   const [cam, setCam] = useState({ x: 0, y: 0 });
   const [error, setError] = useState<string | null>(null);
 
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
-  // Where the rendered region's top-left sits, so we can position the img
-  // and translate a tile coordinate back from a click.
-  const regionRef = useRef({ x0: 0, y0: 0, w: 0, h: 0 });
-
   const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
   const [tileItems, setTileItems] = useState<number[]>([]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
 
+  // Chunk image cache: key `z:cx:cy` → object URL. Refs (not state) so
+  // fetches don't churn renders; a `tick` bump triggers a repaint when a
+  // chunk lands.
+  const chunkCache = useRef<Map<string, string>>(new Map());
+  const inflight = useRef<Set<string>>(new Set());
+  const [, setTick] = useState(0);
+  const repaint = () => setTick((n) => n + 1);
+
   // Live drag offset (px), applied as a transform without re-rendering.
-  const drag = useRef<{
-    active: boolean;
-    startX: number;
-    startY: number;
-    moved: boolean;
-  } | null>(null);
+  const drag = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  function clearChunks() {
+    for (const url of chunkCache.current.values()) URL.revokeObjectURL(url);
+    chunkCache.current.clear();
+    inflight.current.clear();
+    repaint();
+  }
 
   // Measure the viewport.
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setViewport({ w: el.clientWidth, h: el.clientHeight });
-    });
+    const ro = new ResizeObserver(() => setViewport({ w: el.clientWidth, h: el.clientHeight }));
     ro.observe(el);
     setViewport({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, [info]);
 
-  // On mount, reflect whatever assets bundle is already loaded app-wide
-  // (the Assets Editor and Map Editor share one workspace).
+  // Reflect any already-loaded assets bundle on mount.
   useEffect(() => {
     void invoke<AssetsDirInfo | null>("get_assets_dir_info")
-      .then((a) => setAssets(a))
+      .then(setAssets)
       .catch(() => {});
+  }, []);
+
+  // Revoke all cached URLs on unmount.
+  useEffect(() => {
+    return () => {
+      for (const url of chunkCache.current.values()) URL.revokeObjectURL(url);
+    };
   }, []);
 
   async function openAssets() {
@@ -113,12 +124,11 @@ export function MapScreen() {
     if (!path) return;
     setError(null);
     try {
-      // Reuse the Assets Editor's bundle loader (sets the shared atlas +
-      // appearances), then drop the map's stale sprite-id cache.
       const result = await invoke<{ assets: AssetsDirInfo }>("open_assets_bundle", { path });
       setAssets(result.assets);
+      // New bundle → cached chunks were drawn with the old sprites.
       await invoke("map_invalidate_sprites").catch(() => {});
-      void renderRegion();
+      clearChunks();
     } catch (e) {
       setError(String(e));
     }
@@ -135,19 +145,18 @@ export function MapScreen() {
     if (!path) return;
     setError(null);
     setLoading(0);
-    // Backend emits 0–100% as it parses + indexes the world.
     const unlisten = await listen<{ phase: string; percent: number }>(
       "mapOpenProgress",
       (e) => setLoading(e.payload.percent),
     );
     try {
       const mi = await invoke<MapInfo>("map_open", { path });
+      clearChunks();
       setInfo(mi);
       setFloor(mi.floors.includes(7) ? 7 : (mi.floors[0] ?? 7));
-      // Center the camera on the map's bounds.
       setCam({
-        x: Math.floor((mi.minX + mi.maxX) / 2) - 8,
-        y: Math.floor((mi.minY + mi.maxY) / 2) - 6,
+        x: Math.max(0, Math.floor((mi.minX + mi.maxX) / 2) - 8),
+        y: Math.max(0, Math.floor((mi.minY + mi.maxY) / 2) - 6),
       });
       setSelected(null);
       setTileItems([]);
@@ -160,53 +169,64 @@ export function MapScreen() {
     }
   }
 
-  // Render the visible region whenever the view parameters change.
-  const renderRegion = useCallback(async () => {
-    if (!info || viewport.w === 0) return;
+  // Visible chunk range for the current camera + viewport + zoom.
+  function visibleChunkRange() {
     const viewTilesW = Math.ceil(viewport.w / (TILE * zoom));
     const viewTilesH = Math.ceil(viewport.h / (TILE * zoom));
-    const x0 = Math.max(0, cam.x - PAD);
-    const y0 = Math.max(0, cam.y - PAD);
-    const w = Math.min(64, viewTilesW + 2 * PAD);
-    const h = Math.min(64, viewTilesH + 2 * PAD);
-    try {
-      const buf = await invoke<ArrayBuffer>("map_render_region", {
-        z: floor,
-        x0,
-        y0,
-        wTiles: w,
-        hTiles: h,
-      });
-      const url = URL.createObjectURL(new Blob([buf], { type: "image/png" }));
-      regionRef.current = { x0, y0, w, h };
-      setImgUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-      setError(null);
-    } catch (e) {
-      setError(String(e));
+    const cx0 = Math.max(0, Math.floor(cam.x / CHUNK) - 1);
+    const cy0 = Math.max(0, Math.floor(cam.y / CHUNK) - 1);
+    const cx1 = Math.floor((cam.x + viewTilesW) / CHUNK) + 1;
+    const cy1 = Math.floor((cam.y + viewTilesH) / CHUNK) + 1;
+    return { cx0, cy0, cx1, cy1 };
+  }
+
+  // Fetch any visible chunks we don't have yet; evict far ones.
+  useEffect(() => {
+    if (!info || viewport.w === 0) return;
+    const { cx0, cy0, cx1, cy1 } = visibleChunkRange();
+
+    const wanted = new Set<string>();
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) wanted.add(`${floor}:${cx}:${cy}`);
     }
-  }, [info, viewport.w, viewport.h, zoom, cam.x, cam.y, floor]);
 
-  useEffect(() => {
-    void renderRegion();
-  }, [renderRegion]);
+    for (const key of wanted) {
+      if (chunkCache.current.has(key) || inflight.current.has(key)) continue;
+      inflight.current.add(key);
+      const [, cxs, cys] = key.split(":");
+      void invoke<ArrayBuffer>("map_render_chunk", {
+        z: floor,
+        cx: Number(cxs),
+        cy: Number(cys),
+      })
+        .then((buf) => {
+          const url = URL.createObjectURL(new Blob([buf], { type: "image/png" }));
+          chunkCache.current.set(key, url);
+          repaint();
+        })
+        .catch((e) => setError(String(e)))
+        .finally(() => inflight.current.delete(key));
+    }
 
-  // Clean up the last object URL on unmount.
-  useEffect(() => {
-    return () => {
-      if (imgUrl) URL.revokeObjectURL(imgUrl);
-    };
+    // Evict if over budget: drop chunks outside the wanted set.
+    if (chunkCache.current.size > MAX_CHUNKS) {
+      for (const [key, url] of chunkCache.current) {
+        if (!wanted.has(key)) {
+          URL.revokeObjectURL(url);
+          chunkCache.current.delete(key);
+        }
+        if (chunkCache.current.size <= MAX_CHUNKS) break;
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [info, floor, zoom, cam.x, cam.y, viewport.w, viewport.h]);
 
   function onPointerDown(e: React.PointerEvent) {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { active: true, startX: e.clientX, startY: e.clientY, moved: false };
+    drag.current = { startX: e.clientX, startY: e.clientY, moved: false };
   }
   function onPointerMove(e: React.PointerEvent) {
-    if (!drag.current?.active) return;
+    if (!drag.current) return;
     const dx = e.clientX - drag.current.startX;
     const dy = e.clientY - drag.current.startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.current.moved = true;
@@ -220,18 +240,14 @@ export function MapScreen() {
     const dy = e.clientY - d.startY;
     setPan({ x: 0, y: 0 });
     if (d.moved) {
-      // Commit the drag as a whole-tile camera move.
       const tilesX = Math.round(dx / (TILE * zoom));
       const tilesY = Math.round(dy / (TILE * zoom));
       setCam((c) => ({ x: Math.max(0, c.x - tilesX), y: Math.max(0, c.y - tilesY) }));
     } else {
-      // A click: figure out which tile and inspect it.
       const rect = viewportRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      const tileX = cam.x + Math.floor(px / (TILE * zoom));
-      const tileY = cam.y + Math.floor(py / (TILE * zoom));
+      const tileX = cam.x + Math.floor((e.clientX - rect.left) / (TILE * zoom));
+      const tileY = cam.y + Math.floor((e.clientY - rect.top) / (TILE * zoom));
       setSelected({ x: tileX, y: tileY });
       void invoke<number[]>("map_tile_items", { z: floor, x: tileX, y: tileY })
         .then(setTileItems)
@@ -239,17 +255,44 @@ export function MapScreen() {
     }
   }
 
-  // The img's top-left in viewport px: region origin offset by camera,
-  // scaled by zoom, plus the live drag pan.
-  const imgLeft = -(cam.x - regionRef.current.x0) * TILE * zoom + pan.x;
-  const imgTop = -(cam.y - regionRef.current.y0) * TILE * zoom + pan.y;
+  // World container translation: map tile (0,0) → screen, offset by camera
+  // and the live drag pan.
+  const worldX = -cam.x * TILE * zoom + pan.x;
+  const worldY = -cam.y * TILE * zoom + pan.y;
 
   const floors = info?.floors ?? [];
   const floorIdx = floors.indexOf(floor);
 
+  // Build the visible chunk <img>s from cache.
+  const chunkImgs: React.ReactNode[] = [];
+  if (info && viewport.w > 0) {
+    const { cx0, cy0, cx1, cy1 } = visibleChunkRange();
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const url = chunkCache.current.get(`${floor}:${cx}:${cy}`);
+        if (!url) continue;
+        chunkImgs.push(
+          <img
+            key={`${cx}:${cy}`}
+            src={url}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              left: cx * CHUNK_PX * zoom,
+              top: cy * CHUNK_PX * zoom,
+              width: CHUNK_PX * zoom,
+              height: CHUNK_PX * zoom,
+              imageRendering: "pixelated",
+            }}
+          />,
+        );
+      }
+    }
+  }
+
   return (
     <main className="h-screen w-screen flex flex-col bg-atlas-cream text-atlas-ink overflow-hidden">
-      {/* Header */}
       <header className="border-b border-atlas-border bg-atlas-paper px-4 py-2 flex items-center gap-3 shrink-0">
         <button
           type="button"
@@ -266,39 +309,36 @@ export function MapScreen() {
         <button
           type="button"
           onClick={() => void openMap()}
-          className="rounded px-2.5 py-1 text-xs font-semibold bg-atlas-ink text-atlas-cream hover:bg-atlas-ink-soft"
+          disabled={!assets}
+          className="rounded px-2.5 py-1 text-xs font-semibold bg-atlas-ink text-atlas-cream hover:bg-atlas-ink-soft disabled:bg-atlas-sand disabled:text-atlas-muted disabled:cursor-not-allowed"
         >
           {t("mapedit.openMap")}
         </button>
         {info && (
           <span className="text-[11px] text-atlas-muted truncate">
-            {basename(info.path)} · {info.width}×{info.height} ·{" "}
-            {info.tileCount.toLocaleString()} {t("mapedit.tiles")} · {floors.length}{" "}
-            {t("mapedit.floors")}
+            {basename(info.path)} · {info.tileCount.toLocaleString()} {t("mapedit.tiles")} ·{" "}
+            {floors.length} {t("mapedit.floors")}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {info && (
-            <button
-              type="button"
-              onClick={() => void openAssets()}
-              title={assets?.path ?? t("mapedit.openAssets")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] border",
-                assets
-                  ? "border-emerald-700/40 text-emerald-800 hover:bg-emerald-700/10"
-                  : "border-amber-600/50 text-amber-700 hover:bg-amber-600/10",
-              )}
-            >
-              <FolderOpen className="h-3 w-3" />
-              {assets ? t("mapedit.changeAssets") : t("mapedit.openAssets")}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => void openAssets()}
+            title={assets?.path ?? t("mapedit.openAssets")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] border",
+              assets
+                ? "border-emerald-700/40 text-emerald-800 hover:bg-emerald-700/10"
+                : "border-amber-600/50 text-amber-700 hover:bg-amber-600/10",
+            )}
+          >
+            <FolderOpen className="h-3 w-3" />
+            {assets ? t("mapedit.changeAssets") : t("mapedit.openAssets")}
+          </button>
           <LanguageSwitcher />
         </div>
       </header>
 
-      {/* Loading overlay with a real percentage from backend progress. */}
       {loading !== null && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-atlas-ink/40 backdrop-blur-sm">
           <div className="w-72 rounded-lg border border-atlas-border bg-atlas-paper p-4 shadow-lg">
@@ -325,7 +365,6 @@ export function MapScreen() {
           <p className="text-sm text-atlas-muted max-w-md text-center">{t("mapedit.subtitle")}</p>
 
           <div className="w-full max-w-md space-y-2">
-            {/* Step 1 — assets bundle (required for sprites) */}
             <button
               type="button"
               onClick={() => void openAssets()}
@@ -346,7 +385,6 @@ export function MapScreen() {
               {assets && <Check className="h-4 w-4 text-emerald-700 shrink-0" />}
             </button>
 
-            {/* Step 2 — open the map (needs step 1 first) */}
             <button
               type="button"
               onClick={() => void openMap()}
@@ -376,7 +414,6 @@ export function MapScreen() {
         </div>
       ) : (
         <div className="flex-1 flex min-h-0">
-          {/* Map viewport */}
           <div
             ref={viewportRef}
             onPointerDown={onPointerDown}
@@ -384,36 +421,29 @@ export function MapScreen() {
             onPointerUp={onPointerUp}
             className="relative flex-1 min-w-0 overflow-hidden bg-atlas-ink/90 cursor-grab active:cursor-grabbing touch-none"
           >
-            {imgUrl && (
-              <img
-                src={imgUrl}
-                alt="map"
-                draggable={false}
-                style={{
-                  position: "absolute",
-                  left: imgLeft,
-                  top: imgTop,
-                  width: regionRef.current.w * TILE * zoom,
-                  height: regionRef.current.h * TILE * zoom,
-                  imageRendering: "pixelated",
-                }}
-              />
-            )}
+            {/* World layer: chunks positioned in world space, translated by
+                camera + live pan. Already-loaded chunks move instantly. */}
+            <div
+              style={{
+                position: "absolute",
+                transform: `translate3d(${worldX}px, ${worldY}px, 0)`,
+                willChange: "transform",
+              }}
+            >
+              {chunkImgs}
+              {selected && (
+                <div
+                  className="absolute border-2 border-amber-400 pointer-events-none"
+                  style={{
+                    left: selected.x * TILE * zoom,
+                    top: selected.y * TILE * zoom,
+                    width: TILE * zoom,
+                    height: TILE * zoom,
+                  }}
+                />
+              )}
+            </div>
 
-            {/* Selection highlight */}
-            {selected && (
-              <div
-                className="absolute border-2 border-amber-400 pointer-events-none"
-                style={{
-                  left: (selected.x - cam.x) * TILE * zoom + pan.x,
-                  top: (selected.y - cam.y) * TILE * zoom + pan.y,
-                  width: TILE * zoom,
-                  height: TILE * zoom,
-                }}
-              />
-            )}
-
-            {/* Floating controls */}
             <div className="absolute top-2 left-2 flex flex-col gap-1.5">
               <div className="flex items-center gap-1 rounded bg-atlas-paper/90 border border-atlas-border px-1 py-0.5 shadow">
                 <button
@@ -473,7 +503,6 @@ export function MapScreen() {
             )}
           </div>
 
-          {/* Inspector */}
           <aside className="w-56 shrink-0 border-l border-atlas-border bg-atlas-paper p-3 overflow-y-auto">
             <h3 className="text-[10px] uppercase tracking-wider text-atlas-muted font-semibold mb-2">
               {t("mapedit.tileItems")}

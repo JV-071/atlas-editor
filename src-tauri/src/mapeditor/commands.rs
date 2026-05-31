@@ -132,53 +132,52 @@ fn display_sprite_of(app: &AppearanceInfo) -> Option<u32> {
     fg.sprite_info.as_ref()?.sprite_ids.first().copied()
 }
 
-/// Render a `w_tiles × h_tiles` region of floor `z`, top-left tile at
-/// `(x0, y0)`, into a PNG. Item sprites come from the assets workspace
-/// (appearances + atlas); the map must be opened and an assets bundle
-/// loaded. Returns raw PNG bytes over binary IPC.
-#[tauri::command]
-pub fn map_render_region(
+/// Make sure the `client_id → sprite` index is built (needs the assets
+/// appearances). Lock order is always map-then-assets so we never deadlock
+/// against commands that lock at most one of the two.
+fn ensure_sprite_index(
+    map_state: &State<'_, SharedMapEditor>,
+    assets_state: &State<'_, SharedWorkspace>,
+) -> Result<(), String> {
+    let mut mg = map_state.lock().map_err(|e| e.to_string())?;
+    if mg.sprite_index.is_none() {
+        let ag = assets_state.lock().map_err(|e| e.to_string())?;
+        let app = ag
+            .workspace
+            .appearances
+            .as_ref()
+            .ok_or("no appearances loaded — open an assets bundle first")?;
+        let mut idx = HashMap::with_capacity(app.objects.len());
+        for obj in &app.objects {
+            if let Some(sid) = display_sprite_of(obj) {
+                idx.insert(obj.id.0, sid);
+            }
+        }
+        mg.sprite_index = Some(idx);
+    }
+    Ok(())
+}
+
+/// Composite a `w × h` tile region of floor `z` (top-left tile `x0, y0`)
+/// into a PNG. Shared by the region and chunk renderers.
+fn render_region_png(
     z: u8,
     x0: u16,
     y0: u16,
-    w_tiles: u32,
-    h_tiles: u32,
-    map_state: State<'_, SharedMapEditor>,
-    assets_state: State<'_, SharedWorkspace>,
-) -> Result<tauri::ipc::Response, String> {
-    let w = w_tiles.clamp(1, MAX_REGION_TILES);
-    let h = h_tiles.clamp(1, MAX_REGION_TILES);
+    w: u32,
+    h: u32,
+    map_state: &State<'_, SharedMapEditor>,
+    assets_state: &State<'_, SharedWorkspace>,
+) -> Result<Vec<u8>, String> {
+    ensure_sprite_index(map_state, assets_state)?;
 
-    // 1. Ensure the client_id → sprite index is built (needs appearances).
-    //    Lock order is always map-then-assets to avoid deadlock with other
-    //    commands (which lock at most one of the two).
-    {
-        let mut mg = map_state.lock().map_err(|e| e.to_string())?;
-        if mg.sprite_index.is_none() {
-            let ag = assets_state.lock().map_err(|e| e.to_string())?;
-            let app = ag
-                .workspace
-                .appearances
-                .as_ref()
-                .ok_or("no appearances loaded — open an assets bundle first")?;
-            let mut idx = HashMap::with_capacity(app.objects.len());
-            for obj in &app.objects {
-                if let Some(sid) = display_sprite_of(obj) {
-                    idx.insert(obj.id.0, sid);
-                }
-            }
-            mg.sprite_index = Some(idx);
-        }
-    }
-
-    // 2. Clone out the per-tile sprite-id stacks for the region, then drop
-    //    the map lock before the (potentially slow) decode + composite.
+    // Clone out the per-tile sprite-id stacks, then drop the map lock
+    // before the (slower) decode + composite.
     let region_stacks: Vec<((u32, u32), Vec<u32>)> = {
         let mg = map_state.lock().map_err(|e| e.to_string())?;
         let index = mg.sprite_index.as_ref().expect("built above");
-        let floor = mg.floors.get(&z);
         let mut out = Vec::new();
-        if let Some(floor) = floor {
+        if let Some(floor) = mg.floors.get(&z) {
             for ty in 0..h {
                 for tx in 0..w {
                     let x = x0.wrapping_add(tx as u16);
@@ -199,7 +198,6 @@ pub fn map_render_region(
         out
     };
 
-    // 3. Grab the atlas (lock-free decode afterwards).
     let atlas = {
         let ag = assets_state.lock().map_err(|e| e.to_string())?;
         ag.atlas.clone()
@@ -208,28 +206,64 @@ pub fn map_render_region(
         return Err("no sprite atlas loaded — open an assets bundle first".into());
     };
 
-    // 4. Composite. Sprites are anchored bottom-right within their tile so
-    //    a 64×64 sprite overhangs up/left like the Tibia client draws it.
+    // Sprites anchor bottom-right within their tile so a 64×64 sprite
+    // overhangs up/left like the Tibia client draws it.
     let mut canvas = RgbaImage::new(w * TILE_PX, h * TILE_PX);
     for ((tx, ty), sprites) in region_stacks {
         for sprite_id in sprites {
             let Ok(sprite) = atlas.sprite(sprite_id) else {
                 continue;
             };
-            let cell_right = (tx + 1) * TILE_PX;
-            let cell_bottom = (ty + 1) * TILE_PX;
-            let dx = cell_right.saturating_sub(sprite.width());
-            let dy = cell_bottom.saturating_sub(sprite.height());
+            let dx = ((tx + 1) * TILE_PX).saturating_sub(sprite.width());
+            let dy = ((ty + 1) * TILE_PX).saturating_sub(sprite.height());
             imageops::overlay(&mut canvas, &sprite, dx as i64, dy as i64);
         }
     }
 
-    // 5. Encode PNG.
     let mut bytes = std::io::Cursor::new(Vec::new());
     canvas
         .write_to(&mut bytes, image::ImageFormat::Png)
         .map_err(|e| e.to_string())?;
-    Ok(tauri::ipc::Response::new(bytes.into_inner()))
+    Ok(bytes.into_inner())
+}
+
+/// Render an arbitrary `w_tiles × h_tiles` region to a PNG. Kept for
+/// one-shot use; the viewer uses [`map_render_chunk`] for cacheable tiles.
+#[tauri::command]
+pub fn map_render_region(
+    z: u8,
+    x0: u16,
+    y0: u16,
+    w_tiles: u32,
+    h_tiles: u32,
+    map_state: State<'_, SharedMapEditor>,
+    assets_state: State<'_, SharedWorkspace>,
+) -> Result<tauri::ipc::Response, String> {
+    let w = w_tiles.clamp(1, MAX_REGION_TILES);
+    let h = h_tiles.clamp(1, MAX_REGION_TILES);
+    let png = render_region_png(z, x0, y0, w, h, &map_state, &assets_state)?;
+    Ok(tauri::ipc::Response::new(png))
+}
+
+/// Fixed chunk size in tiles. The viewer renders the world as a grid of
+/// these, caching each so panning only fetches newly-revealed chunks.
+const CHUNK_TILES: u32 = 16;
+
+/// Render one `CHUNK_TILES²` chunk of floor `z` at chunk coords
+/// `(cx, cy)` (i.e. tiles `[cx*16 .. cx*16+16)`). Returns raw PNG bytes —
+/// cache-friendly because the same chunk renders identically every time.
+#[tauri::command]
+pub fn map_render_chunk(
+    z: u8,
+    cx: u32,
+    cy: u32,
+    map_state: State<'_, SharedMapEditor>,
+    assets_state: State<'_, SharedWorkspace>,
+) -> Result<tauri::ipc::Response, String> {
+    let x0 = (cx * CHUNK_TILES).min(u16::MAX as u32) as u16;
+    let y0 = (cy * CHUNK_TILES).min(u16::MAX as u32) as u16;
+    let png = render_region_png(z, x0, y0, CHUNK_TILES, CHUNK_TILES, &map_state, &assets_state)?;
+    Ok(tauri::ipc::Response::new(png))
 }
 
 /// Drop the cached `client_id → sprite` index so the next render rebuilds

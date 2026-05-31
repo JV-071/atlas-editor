@@ -102,6 +102,7 @@ pub fn run() {
             // Map Editor
             mapeditor::commands::map_open,
             mapeditor::commands::map_render_region,
+            mapeditor::commands::map_render_chunk,
             mapeditor::commands::map_invalidate_sprites,
             mapeditor::commands::map_tile_items,
         ])
