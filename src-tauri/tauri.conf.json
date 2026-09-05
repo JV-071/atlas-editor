@@ -45,7 +45,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/atlas-kit/atlas-editor/releases/latest/download/latest.json"
+        "https://github.com/JV-071/atlas-editor/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg4RjZCMTUzRDAyNzk2RApSV1J0ZVFJOUZXdVBDQno1K0xpSTFwT2Flemd3NnpKNk00NXlCdHE4MVV4aThJOXU2c0E1WXhMUQo="
     }
